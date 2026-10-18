@@ -37,6 +37,13 @@ final class AgeCalculatorTests: XCTestCase {
                        24.5, accuracy: 0.00000001)
     }
 
+    func testDesktopFormatDecodesPreviouslySavedAgeFormats() throws {
+        for format in AgeFormat.allCases {
+            let data = try JSONEncoder().encode(format)
+            XCTAssertEqual(try JSONDecoder().decode(DesktopCardFormat.self, from: data).rawValue, format.rawValue)
+        }
+    }
+
     func testDateOnlyUsesSelectedTimezoneMidnight() throws {
         let birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "Asia/Kolkata")
         XCTAssertFalse(birth.hasBirthTime)
@@ -57,6 +64,19 @@ final class AgeCalculatorTests: XCTestCase {
                                  timeComponents: nil, timeZoneID: "Asia/Kolkata"))
         XCTAssertNil(BirthDetails(dateComponents: selected, timeComponents: DateComponents(hour: 12),
                                  timeZoneID: "Asia/Kolkata"))
+    }
+
+    func testWidgetDropdownsAndOptionalTime() throws {
+        let birth = try XCTUnwrap(BirthDetails(day: "29", month: "02 February", year: "2000",
+                                              time: "12:30", timeZoneID: "Asia/Kolkata"))
+        XCTAssertEqual(birth.date, date("2000-02-29T07:00:00Z"))
+        let approximate = try XCTUnwrap(BirthDetails(day: "01", month: "01 January", year: "2000",
+                                                    time: "  ", timeZoneID: "UTC"))
+        XCTAssertFalse(approximate.hasBirthTime)
+        XCTAssertNil(BirthDetails(day: "29", month: "02 February", year: "2001", time: nil, timeZoneID: "UTC"))
+        for time in ["25:00", "12:60", "12", "9:30", "12:30:00", "ab:cd"] {
+            XCTAssertNil(BirthDetails(day: "01", month: "01 January", year: "2000", time: time, timeZoneID: "UTC"))
+        }
     }
 
     func testInvalidAndFutureBirthdaysAreRejected() {

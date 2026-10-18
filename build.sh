@@ -84,7 +84,7 @@ extension = app / 'Contents/PlugIns/LifeClockWidget.appex'
 data = json.loads((extension / 'Contents/Resources/Metadata.appintents/extract.actionsdata').read_bytes())
 intent = data['actions']['LifeClockConfiguration']
 names = {parameter['name'] for parameter in intent['parameters']}
-required = {'birthday', 'birthTime', 'timeZoneID', 'format'}
+required = {'birthDay', 'birthMonth', 'birthYear', 'birthTime', 'timeZoneID', 'format'}
 if not required.issubset(names):
     raise SystemExit('Widget settings metadata is missing: ' + ', '.join(sorted(required - names)))
 for name in ('app', 'widget'):

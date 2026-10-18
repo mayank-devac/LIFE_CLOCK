@@ -16,7 +16,8 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     private var sessionActive = true
 
     init(store: PreferencesStore, showSettings: @escaping () -> Void) {
-        panel = DesktopPanel(contentRect: NSRect(origin: .zero, size: AgeCardView.size),
+        let cardSize = AgeCardView.size(for: store.preferences.cardFormat)
+        panel = DesktopPanel(contentRect: NSRect(origin: .zero, size: cardSize),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
         panel.delegate = self
@@ -30,8 +31,7 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
         panel.contentView = NSHostingView(rootView: AgeCardView(store: store, activity: activity,
                                                                showSettings: showSettings))
         if !panel.setFrameUsingName("LifeClockCard") { panel.center() }
-        // Retain the saved position, but discard the previous larger card size.
-        panel.setContentSize(AgeCardView.size)
+        panel.setContentSize(cardSize)
         panel.setFrameAutosaveName("LifeClockCard")
         keepOnScreen()
 
@@ -65,6 +65,11 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     }
 
     func apply(_ preferences: LifePreferences) {
+        let cardSize = AgeCardView.size(for: preferences.cardFormat)
+        if panel.contentView?.frame.size != cardSize {
+            panel.setContentSize(cardSize)
+            keepOnScreen()
+        }
         panel.level = preferences.alwaysOnTop ? .floating
             : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
         panel.collectionBehavior = preferences.alwaysOnTop

@@ -7,20 +7,27 @@ final class CardActivity: ObservableObject {
 
 struct AgeCardView: View {
     static let size = NSSize(width: 236, height: 84)
+    private static let liveAgeSize = NSSize(width: 390, height: 104)
     @ObservedObject var store: PreferencesStore
     @ObservedObject var activity: CardActivity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let showSettings: () -> Void
 
+    static func size(for format: DesktopCardFormat) -> NSSize {
+        format == .liveAge ? liveAgeSize : size
+    }
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 0.5,
+        let format = store.preferences.cardFormat
+        let cardSize = Self.size(for: format)
+        TimelineView(.animation(minimumInterval: reduceMotion || format == .liveAge ? 1 : 0.5,
                                 paused: !activity.isRunning)) { context in
             VStack(spacing: 4) {
                 if let birth = store.preferences.birth,
                    let age = AgeCalculator.snapshot(birth: birth, now: context.date) {
                     ageContent(age, date: context.date)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(age.accessibleDescription + (birth.hasBirthTime ? "" : ", approximate"))
+                        .accessibilityLabel(accessibilityDescription(age, birth: birth, date: context.date))
                 } else {
                     Text("—")
                         .accessibilityLabel("Set your birthday in Settings")
@@ -30,8 +37,8 @@ struct AgeCardView: View {
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.5)
-            .padding(.horizontal, 14)
-            .frame(width: Self.size.width, height: Self.size.height)
+            .padding(.horizontal, format == .liveAge ? 0 : 14)
+            .frame(width: cardSize.width, height: cardSize.height)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .overlay(CardDragSurface(showSettings: showSettings))
         }
@@ -51,10 +58,67 @@ struct AgeCardView: View {
             .font(.system(size: 20, weight: .regular, design: .monospaced))
             .foregroundStyle(.secondary)
         case .decimalYears:
-            Text(age.decimalYears.formatted(.number.precision(.fractionLength(9))))
+            Text(age.decimalYears.formattedDecimalYears(fractionDigits: 9))
         case .totalSeconds:
             Text(age.totalSeconds.formatted(.number.precision(.fractionLength(3))))
+        case .liveAge:
+            if let birth = store.preferences.birth {
+                liveAgeContent(birth, date: date)
+            }
         }
+    }
+
+    @ViewBuilder private func liveAgeContent(_ birth: BirthDetails, date: Date) -> some View {
+        if let birthDate = birth.date {
+            let parts = birth.calendar.dateComponents(
+                [.year, .day, .hour, .minute, .second],
+                from: birthDate,
+                to: max(date, birthDate))
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer(minLength: 0)
+                HStack(alignment: .top, spacing: 18) {
+                    liveAgeUnit(parts.day, "DAYS", pad: false)
+                    liveAgeUnit(parts.hour, "HRS")
+                    liveAgeUnit(parts.minute, "MIN")
+                    liveAgeUnit(parts.second, "SEC")
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .padding(16)
+        } else {
+            Text("—")
+        }
+    }
+
+    private func liveAgeUnit(_ value: Int?, _ label: String, pad: Bool = true) -> some View {
+        let number = value ?? 0
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(pad ? String(format: "%02d", number) : "\(number)")
+                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(number)))
+                .animation(.snappy, value: number)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.5)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func accessibilityDescription(_ age: AgeSnapshot, birth: BirthDetails, date: Date) -> String {
+        let description: String
+        if store.preferences.cardFormat == .liveAge, let birthDate = birth.date {
+            let parts = birth.calendar.dateComponents(
+                [.year, .day, .hour, .minute, .second],
+                from: birthDate,
+                to: max(date, birthDate))
+            description = "\(parts.year ?? 0) years, \(parts.day ?? 0) days, " +
+                "\(parts.hour ?? 0) hours, \(parts.minute ?? 0) minutes, \(parts.second ?? 0) seconds"
+        } else {
+            description = age.accessibleDescription
+        }
+        return description + (birth.hasBirthTime ? "" : ", approximate")
     }
 
     private func separator(_ date: Date) -> some View {

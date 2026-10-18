@@ -65,8 +65,8 @@ final class LifeClockDelegate: NSObject, NSApplicationDelegate {
 
     func showSettings() {
         if settingsWindow?.isVisible != true {
-            let view = SetupAndSettingsView(store: store) { [weak self] in
-                self?.settingsWindow?.close()
+            let view = SetupAndSettingsView(store: store) {
+                // Keep the settings window open until the user chooses Close.
             }
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: SetupAndSettingsView.size),
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)

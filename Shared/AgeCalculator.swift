@@ -27,6 +27,24 @@ struct BirthDetails: Codable, Equatable {
         guard date != nil else { return nil }
     }
 
+    /// Widget dropdowns use strings because macOS does not reliably render DateComponents pickers.
+    init?(day: String, month: String, year: String, time: String?, timeZoneID: String) {
+        guard let day = Int(day), let monthNumber = month.split(separator: " ").first,
+              let month = Int(monthNumber), let year = Int(year) else { return nil }
+        let text = time?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var hour: Int?
+        var minute: Int?
+        if !text.isEmpty {
+            let parts = text.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 2, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy({ $0.isASCII && $0.isNumber }) }),
+                  let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
+            hour = h
+            minute = m
+        }
+        self.init(year: year, month: month, day: day, hour: hour, minute: minute, timeZoneID: timeZoneID)
+        guard date != nil else { return nil }
+    }
+
     var hasBirthTime: Bool { hour != nil && minute != nil }
     var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -59,6 +77,33 @@ enum AgeFormat: String, Codable, CaseIterable, Identifiable {
         case .decimalYears: return "Decimal years"
         case .totalSeconds: return "Total seconds"
         }
+    }
+}
+
+enum DesktopCardFormat: String, Codable, CaseIterable, Identifiable {
+    case detailed, decimalYears, totalSeconds, liveAge
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .detailed: return "Detailed age"
+        case .decimalYears: return "Decimal years"
+        case .totalSeconds: return "Total seconds"
+        case .liveAge: return "Live age card"
+        }
+    }
+}
+
+extension Double {
+    func formattedDecimalYears(fractionDigits: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.groupingSeparator = ","
+        formatter.groupingSize = 3
+        formatter.usesGroupingSeparator = true
+        formatter.minimumFractionDigits = fractionDigits
+        formatter.maximumFractionDigits = fractionDigits
+        return formatter.string(from: NSNumber(value: self)) ?? String(self)
     }
 }
 

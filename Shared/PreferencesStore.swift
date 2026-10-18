@@ -3,7 +3,7 @@ import Foundation
 
 struct LifePreferences: Codable, Equatable {
     var birth: BirthDetails?
-    var cardFormat: AgeFormat = .detailed
+    var cardFormat: DesktopCardFormat = .liveAge
     var cardEnabled = true
     var alwaysOnTop = false
 }

@@ -18,18 +18,17 @@ struct SetupAndSettingsView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var geocoder = CLGeocoder()
 
-    static let size = CGSize(width: 520, height: 610)
+    static let size = CGSize(width: 620, height: 610)
 
-    private var birthdayBinding: Binding<Date> {
-        Binding(get: { birth.date ?? Date() }, set: { date in
-            let parts = birth.calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-            birth.year = parts.year!
-            birth.month = parts.month!
-            birth.day = parts.day!
-            if birth.hasBirthTime {
-                birth.hour = parts.hour
-                birth.minute = parts.minute
-            }
+    private var birthTimeBinding: Binding<Date> {
+        // Use a stable clock-only reference so changing time never changes the selected DOB.
+        Binding(get: {
+            Calendar(identifier: .gregorian).date(from: DateComponents(year: 2000, month: 1, day: 1,
+                hour: birth.hour ?? 0, minute: birth.minute ?? 0))!
+        }, set: { date in
+            let parts = Calendar(identifier: .gregorian).dateComponents([.hour, .minute], from: date)
+            birth.hour = parts.hour
+            birth.minute = parts.minute
         })
     }
 
@@ -37,19 +36,37 @@ struct SetupAndSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Form {
                 Section("Date of birth") {
-                    HStack(spacing: 8) {
-                        Picker("Day", selection: $birth.day) {
-                            ForEach(1...daysInSelectedMonth, id: \.self) { Text("\($0)").tag($0) }
-                        }
-                        Picker("Month", selection: $birth.month) {
-                            ForEach(1...12, id: \.self) { month in
-                                Text(birth.calendar.shortMonthSymbols[month - 1]).tag(month)
+                    HStack(alignment: .bottom, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Day")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Picker("Day", selection: $birth.day) {
+                                ForEach(1...daysInSelectedMonth, id: \.self) { Text("\($0)").tag($0) }
                             }
+                            .labelsHidden()
                         }
-                        Picker("Year", selection: $birth.year) {
-                            ForEach((min(1900, birth.year)...currentYear).reversed(), id: \.self) {
-                                Text(String($0)).tag($0)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Month")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Picker("Month", selection: $birth.month) {
+                                ForEach(1...12, id: \.self) { month in
+                                    Text(String(format: "%02d", month)).tag(month)
+                                }
                             }
+                            .labelsHidden()
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Year")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Picker("Year", selection: $birth.year) {
+                                ForEach((min(1900, birth.year)...currentYear).reversed(), id: \.self) {
+                                    Text(String($0)).tag($0)
+                                }
+                            }
+                            .labelsHidden()
                         }
                     }
                     .onChange(of: birth.month) { _, _ in clampDay() }
@@ -59,9 +76,9 @@ struct SetupAndSettingsView: View {
                         birth.minute = known ? 0 : nil
                     }))
                     if birth.hasBirthTime {
-                        DatePicker("Time", selection: birthdayBinding, displayedComponents: .hourAndMinute)
-                            .environment(\.calendar, birth.calendar)
-                            .environment(\.timeZone, birth.calendar.timeZone)
+                        DatePicker("Time", selection: birthTimeBinding, displayedComponents: .hourAndMinute)
+                            .environment(\.calendar, Calendar(identifier: .gregorian))
+                            .environment(\.timeZone, TimeZone.current)
                     }
                 }
                 Section("Birth timezone") {
@@ -183,9 +200,9 @@ struct SetupAndSettingsView: View {
         }
     }
 
-    private func formatPicker(_ title: String, selection: Binding<AgeFormat>) -> some View {
+    private func formatPicker(_ title: String, selection: Binding<DesktopCardFormat>) -> some View {
         Picker(title, selection: selection) {
-            ForEach(AgeFormat.allCases) { format in Text(format.title).tag(format) }
+            ForEach(DesktopCardFormat.allCases) { format in Text(format.title).tag(format) }
         }
     }
 
@@ -217,7 +234,6 @@ struct SetupAndSettingsView: View {
                 errorMessage = "Birthday saved. macOS needs your approval in Login Items before automatic launch can work."
             } else {
                 errorMessage = nil
-                onSaved()
             }
         } catch {
             errorMessage = "Birthday saved, but launch at login could not be changed: \(error.localizedDescription)"

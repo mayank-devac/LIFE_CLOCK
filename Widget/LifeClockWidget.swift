@@ -18,15 +18,40 @@ struct BirthTimeZoneOptions: DynamicOptionsProvider {
     func defaultResult() async -> String? { TimeZone.current.identifier }
 }
 
+struct BirthDayOptions: DynamicOptionsProvider {
+    func results() async throws -> [String] { (1...31).map { String(format: "%02d", $0) } }
+}
+
+struct BirthMonthOptions: DynamicOptionsProvider {
+    func results() async throws -> [String] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.monthSymbols.enumerated().map { String(format: "%02d %@", $0.offset + 1, $0.element) }
+    }
+}
+
+struct BirthYearOptions: DynamicOptionsProvider {
+    func results() async throws -> [String] {
+        let year = Calendar(identifier: .gregorian).component(.year, from: Date())
+        return (1900...year).reversed().map(String.init)
+    }
+}
+
 struct LifeClockConfiguration: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Life Clock settings"
     static var description = IntentDescription("Widget settings")
 
-    @Parameter(title: "Date of birth", kind: .date)
-    var birthday: DateComponents?
+    @Parameter(title: "Day", optionsProvider: BirthDayOptions())
+    var birthDay: String?
 
-    @Parameter(title: "Birth time (optional)", kind: .time)
-    var birthTime: DateComponents?
+    @Parameter(title: "Month", optionsProvider: BirthMonthOptions())
+    var birthMonth: String?
+
+    @Parameter(title: "Year", optionsProvider: BirthYearOptions())
+    var birthYear: String?
+
+    @Parameter(title: "Birth time (HH:mm, optional)")
+    var birthTime: String?
 
     @Parameter(title: "Birth timezone", optionsProvider: BirthTimeZoneOptions())
     var timeZoneID: String
@@ -51,7 +76,7 @@ struct LifeClockProvider: AppIntentTimelineProvider {
 
     func snapshot(for configuration: LifeClockConfiguration, in context: Context) async -> LifeClockEntry {
         let entry = makeEntry(for: configuration, date: Date())
-        return context.isPreview && configuration.birthday == nil ? placeholder(in: context) : entry
+        return context.isPreview && configuration.birthYear == nil ? placeholder(in: context) : entry
     }
 
     func timeline(for configuration: LifeClockConfiguration, in context: Context) async -> Timeline<LifeClockEntry> {
@@ -66,10 +91,11 @@ struct LifeClockProvider: AppIntentTimelineProvider {
     }
 
     private func makeEntry(for configuration: LifeClockConfiguration, date: Date) -> LifeClockEntry {
-        guard let birthday = configuration.birthday else {
+        guard let day = configuration.birthDay, let month = configuration.birthMonth,
+              let year = configuration.birthYear else {
             return LifeClockEntry(date: date, birth: nil)
         }
-        guard let birth = BirthDetails(dateComponents: birthday, timeComponents: configuration.birthTime,
+        guard let birth = BirthDetails(day: day, month: month, year: year, time: configuration.birthTime,
                                        timeZoneID: configuration.timeZoneID),
               let birthDate = birth.date, birthDate <= Date() else {
             return LifeClockEntry(date: date, birth: nil,
@@ -124,7 +150,7 @@ struct LifeClockWidgetView: View {
                 .monospacedDigit()
                 .minimumScaleFactor(0.5).lineLimit(1)
         case .decimalYears:
-            Text(age.decimalYears.formatted(.number.precision(.fractionLength(6))))
+            Text(age.decimalYears.formattedDecimalYears(fractionDigits: 6))
                 .font(.system(size: 28, weight: .medium, design: .rounded)).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.5)
         case .totalSeconds:
