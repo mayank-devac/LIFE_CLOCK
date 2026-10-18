@@ -160,7 +160,7 @@ struct LiveAgeCardView: View {
                 unit(parts.second, "SEC", numberSize: 33)
                 ForEach(SubsecondUnit.allCases.filter { subsecondUnits.contains($0) }) { subsecondUnit in
                     textUnit(subsecondUnit.formattedValue(of: fractionalInterval), subsecondUnit.shortLabel,
-                             numberSize: 18)
+                             numberSize: 18, animated: false)
                         .accessibilityLabel("\(subsecondUnit.title): \(subsecondUnit.formattedValue(of: fractionalInterval))")
                 }
             }
@@ -176,15 +176,16 @@ struct LiveAgeCardView: View {
         return textUnit(pad ? String(format: "%02d", number) : "\(number)", label, numberSize: numberSize)
     }
 
-    private func textUnit(_ value: String, _ label: String, numberSize: CGFloat) -> some View {
+    private func textUnit(_ value: String, _ label: String, numberSize: CGFloat,
+                          animated: Bool = true) -> some View {
         return VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(.system(size: numberSize, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .contentTransition(.numericText())
-                .animation(.snappy, value: value)
+                .contentTransition(animated ? .numericText() : .identity)
+                .animation(animated ? .snappy : nil, value: value)
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
