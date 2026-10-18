@@ -15,6 +15,8 @@ struct LifePreferences: Codable, Equatable {
     var wallpaperOffsetY = 0.0     // -1 (down) … 1 (up), half-screen shift
     var wallpaperSize = 1.0        // 1 = full width; 0.4 … 2.0
     var wallpaperRoundness = 1.4   // 0 = sharp corners; relative to pane padding
+    var wallpaperGlassFullScreen = false // glass spans the screen instead of the digits pane
+    var wallpaperGlassStrength = 0.4    // 0 = nearly clear, 1 = most veiled
 
     init(birth: BirthDetails? = nil, cardFormat: DesktopCardFormat = .liveAge,
          subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds],
@@ -27,7 +29,9 @@ struct LifePreferences: Codable, Equatable {
          wallpaperOffsetX: Double = 0,
          wallpaperOffsetY: Double = 0,
          wallpaperSize: Double = 1,
-         wallpaperRoundness: Double = 1.4) {
+         wallpaperRoundness: Double = 1.4,
+         wallpaperGlassFullScreen: Bool = false,
+         wallpaperGlassStrength: Double = 0.4) {
         self.birth = birth
         self.cardFormat = cardFormat
         self.subsecondUnits = subsecondUnits
@@ -41,12 +45,16 @@ struct LifePreferences: Codable, Equatable {
         self.wallpaperOffsetY = wallpaperOffsetY
         self.wallpaperSize = wallpaperSize
         self.wallpaperRoundness = wallpaperRoundness
+        self.wallpaperGlassFullScreen = wallpaperGlassFullScreen
+        self.wallpaperGlassStrength = wallpaperGlassStrength
     }
 
     private enum CodingKeys: String, CodingKey {
         case birth, cardFormat, subsecondUnits, cardEnabled, alwaysOnTop
         case wallpaperMode, wallpaperGlass, wallpaperDisplay
         case wallpaperCustomLayout, wallpaperOffsetX, wallpaperOffsetY, wallpaperSize, wallpaperRoundness
+        case wallpaperGlassFullScreen
+        case wallpaperGlassStrength
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -82,6 +90,8 @@ struct LifePreferences: Codable, Equatable {
         wallpaperOffsetY = try values.decodeIfPresent(Double.self, forKey: .wallpaperOffsetY) ?? 0
         wallpaperSize = try values.decodeIfPresent(Double.self, forKey: .wallpaperSize) ?? 1
         wallpaperRoundness = try values.decodeIfPresent(Double.self, forKey: .wallpaperRoundness) ?? 1.4
+        wallpaperGlassFullScreen = try values.decodeIfPresent(Bool.self, forKey: .wallpaperGlassFullScreen) ?? false
+        wallpaperGlassStrength = try values.decodeIfPresent(Double.self, forKey: .wallpaperGlassStrength) ?? 0.4
     }
 }
 

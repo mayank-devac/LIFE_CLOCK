@@ -163,9 +163,10 @@ struct LiveAgeCardView: View {
                 unit(parts.minute, "MIN", numberSize: 33)
                 unit(parts.second, "SEC", numberSize: 33)
                 ForEach(SubsecondUnit.allCases.filter { subsecondUnits.contains($0) }) { subsecondUnit in
-                    textUnit(subsecondUnit.formattedValue(of: fractionalInterval), subsecondUnit.shortLabel,
-                             numberSize: 18, animated: false)
-                        .accessibilityLabel("\(subsecondUnit.title): \(subsecondUnit.formattedValue(of: fractionalInterval))")
+                    SubsecondValueColumn(
+                        value: subsecondUnit.formattedValue(of: fractionalInterval),
+                        label: subsecondUnit.shortLabel,
+                        accessibilityLabel: subsecondUnit.title)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -181,15 +182,45 @@ struct LiveAgeCardView: View {
     }
 
     private func textUnit(_ value: String, _ label: String, numberSize: CGFloat,
-                          animated: Bool = true) -> some View {
+                          transition: ContentTransition = .numericText(),
+                          animation: Animation? = .snappy) -> some View {
         return VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(.system(size: numberSize, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .contentTransition(animated ? .numericText() : .identity)
-                .animation(animated ? .snappy : nil, value: value)
+                .contentTransition(transition)
+                .animation(animation, value: value)
+            Text(label)
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct SubsecondValueColumn: View {
+    let value: String
+    let label: String
+    let accessibilityLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .keyframeAnimator(initialValue: 1.0, trigger: value) { content, scale in
+                    content.scaleEffect(scale)
+                } keyframes: { _ in
+                    KeyframeTrack {
+                        LinearKeyframe(1.035, duration: 0.035)
+                        LinearKeyframe(1.0, duration: 0.085)
+                    }
+                }
+                .accessibilityLabel("\(accessibilityLabel): \(value)")
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
@@ -232,6 +263,7 @@ struct WallpaperAgeView: View {
 
     @ViewBuilder private func centerContent(size: CGSize, now: Date) -> some View {
         let preferences = store.preferences
+        let fullScreenGlass = preferences.wallpaperGlass && preferences.wallpaperGlassFullScreen
         if let birth = preferences.birth, let birthDate = birth.date {
             let metrics = metrics(size: size, scale: preferences.wallpaperSize)
             let parts = birth.calendar.dateComponents(
@@ -248,24 +280,28 @@ struct WallpaperAgeView: View {
                 }
             }
             .frame(width: metrics.rowWidth)
-            .modifier(WallpaperGlassModifier(enabled: preferences.wallpaperGlass,
+            .modifier(WallpaperGlassModifier(enabled: preferences.wallpaperGlass && !fullScreenGlass,
                                              panePadding: metrics.panePadding,
-                                             roundness: preferences.wallpaperRoundness))
-            // Offsets use only the slack left on each axis, so the pane can
-            // never leave the screen borders; the slider ends touch the edges.
+                                             roundness: preferences.wallpaperRoundness,
+                                             strength: preferences.wallpaperGlassStrength))
             .offset(x: preferences.wallpaperOffsetX * maxSlackX,
                     y: -preferences.wallpaperOffsetY * maxSlackY)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .modifier(WallpaperScreenGlassModifier(enabled: fullScreenGlass,
+                                                   strength: preferences.wallpaperGlassStrength))
         } else {
             let metrics = metrics(size: size, scale: 1)
             Text("—")
                 .font(.system(size: metrics.digit * 1.2, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .modifier(WallpaperGlassModifier(enabled: store.preferences.wallpaperGlass,
+                .modifier(WallpaperGlassModifier(enabled: store.preferences.wallpaperGlass && !fullScreenGlass,
                                                  panePadding: metrics.panePadding,
-                                                 roundness: store.preferences.wallpaperRoundness))
+                                                 roundness: store.preferences.wallpaperRoundness,
+                                                 strength: store.preferences.wallpaperGlassStrength))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .accessibilityLabel("Set your birthday in Settings")
+                .modifier(WallpaperScreenGlassModifier(enabled: fullScreenGlass,
+                                                       strength: store.preferences.wallpaperGlassStrength))
         }
     }
 
@@ -319,6 +355,9 @@ struct WallpaperAgeView: View {
                 .minimumScaleFactor(0.5)
                 .contentTransition(animated ? .numericText() : .identity)
                 .animation(animated ? .snappy : nil, value: text)
+                // Keeps digits legible on bright wallpaper patches without
+                // looking like a hard outline.
+                .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)
             Text(label.uppercased())
                 .font(.system(size: max(10, metrics.digit * 0.15), weight: .medium))
                 .tracking(max(1, metrics.digit * 0.06))
@@ -336,16 +375,18 @@ private struct WallpaperGlassModifier: ViewModifier {
     let enabled: Bool
     let panePadding: CGFloat
     let roundness: CGFloat
+    let strength: CGFloat
 
     func body(content: Content) -> some View {
         if enabled {
             content
-                .modifier(GlassPaneModifier(cornerRadius: panePadding * roundness, padding: panePadding))
+                .modifier(GlassPaneModifier(cornerRadius: panePadding * roundness, padding: panePadding,
+                                            strength: strength))
         } else {
             content
                 .padding(.horizontal, panePadding)
                 .padding(.vertical, panePadding * 0.75)
-                .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
+                .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
         }
     }
 }
@@ -353,24 +394,37 @@ private struct WallpaperGlassModifier: ViewModifier {
 private struct GlassPaneModifier: ViewModifier {
     let cornerRadius: CGFloat
     let padding: CGFloat
+    let strength: CGFloat
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         let gloss = LinearGradient(
             stops: [
-                .init(color: .white.opacity(0.20), location: 0.0),
-                .init(color: .white.opacity(0.03), location: 0.32),
-                .init(color: .white.opacity(0.06), location: 0.78),
-                .init(color: .white.opacity(0.12), location: 1.0),
+                .init(color: .white.opacity(0.10 * sheen), location: 0.0),
+                .init(color: .white.opacity(0.015 * sheen), location: 0.36),
+                .init(color: .white.opacity(0.03 * sheen), location: 0.80),
+                .init(color: .white.opacity(0.05 * sheen), location: 1.0),
             ],
             startPoint: .top, endPoint: .bottom)
         paneBase(content)
+            .overlay {
+                // Neutral smoke veil: paired low-opacity black + white washes
+                // cancel out to a grain-free translucent darkening that reads
+                // softly on light and dark wallpapers alike.
+                shape.fill(Color.black.opacity(0.13 * strength))
+                    .allowsHitTesting(false)
+                shape.fill(Color.white.opacity(0.13 * strength))
+                    .allowsHitTesting(false)
+            }
             .overlay { gloss.clipShape(shape).allowsHitTesting(false) }
             .overlay {
-                shape.strokeBorder(.white.opacity(0.16), lineWidth: 1).allowsHitTesting(false)
+                shape.strokeBorder(.white.opacity(0.14), lineWidth: 1).allowsHitTesting(false)
             }
-            .shadow(color: .black.opacity(0.22), radius: 26, x: 0, y: 14)
+            .shadow(color: .black.opacity(0.16), radius: 16, x: 0, y: 8)
     }
+
+    // Gloss intensity follows the slider a little (0.5× at clarity … 1× at heavy).
+    var sheen: CGFloat { 0.5 + 0.5 * strength }
 
     @ViewBuilder private func paneBase(_ content: some View) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -381,6 +435,38 @@ private struct GlassPaneModifier: ViewModifier {
             padded.glassEffect(.regular, in: shape)
         } else {
             padded.background(.ultraThinMaterial, in: shape)
+        }
+    }
+}
+
+// Full-screen variant: glass spans the entire screen behind the digits.
+private struct WallpaperScreenGlassModifier: ViewModifier {
+    let enabled: Bool
+    let strength: CGFloat
+
+    func body(content: Content) -> some View {
+        let sheen = 0.5 + 0.5 * strength
+        let gloss = LinearGradient(
+            stops: [
+                .init(color: .white.opacity(0.08 * sheen), location: 0.0),
+                .init(color: .white.opacity(0.012 * sheen), location: 0.34),
+                .init(color: .white.opacity(0.028 * sheen), location: 0.78),
+                .init(color: .white.opacity(0.045 * sheen), location: 1.0),
+            ],
+            startPoint: .top, endPoint: .bottom)
+        if enabled {
+            // Whole-screen mode stays grain-free: a single neutral scrim whose
+            // depth follows the strength slider, no stacked materials.
+            content
+                .overlay {
+                    Rectangle().fill(Color.black.opacity(0.16 * strength))
+                        .allowsHitTesting(false)
+                    Rectangle().fill(Color.white.opacity(0.16 * strength))
+                        .allowsHitTesting(false)
+                }
+                .overlay { gloss.allowsHitTesting(false) }
+        } else {
+            content
         }
     }
 }

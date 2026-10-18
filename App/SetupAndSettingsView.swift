@@ -239,6 +239,17 @@ struct SetupAndSettingsView: View {
                         }))
                     if store.preferences.wallpaperMode {
                         Toggle("Frosted glass pane", isOn: preferenceBinding(\.wallpaperGlass))
+                        if store.preferences.wallpaperGlass {
+                            Toggle("Glass across the whole screen", isOn: preferenceBinding(\.wallpaperGlassFullScreen))
+                            Slider(value: preferenceBinding(\.wallpaperGlassStrength), in: 0...1)
+                                .accessibilityLabel("Glass strength")
+                            Text("Glass strength · clear ↔ veiled").font(.caption2).foregroundStyle(.secondary)
+                            if store.preferences.wallpaperGlassFullScreen {
+                                Text("The frost, gloss and translucency cover the entire screen behind the digits; the rounded pane and the roundness slider take no effect.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                         Picker("Screen", selection: preferenceBinding(\.wallpaperDisplay)) {
                             ForEach(ScreenChoice.current()) { choice in
                                 Text(choice.name).tag(choice.id)
