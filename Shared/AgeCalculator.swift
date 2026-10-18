@@ -81,7 +81,7 @@ enum AgeFormat: String, Codable, CaseIterable, Identifiable {
 }
 
 enum DesktopCardFormat: String, Codable, CaseIterable, Identifiable {
-    case detailed, decimalYears, totalSeconds, liveAge
+    case detailed, decimalYears, totalSeconds, liveAge, countdown
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -89,7 +89,39 @@ enum DesktopCardFormat: String, Codable, CaseIterable, Identifiable {
         case .decimalYears: return "Decimal years"
         case .totalSeconds: return "Total seconds"
         case .liveAge: return "Live age card"
+        case .countdown: return "Years remaining"
         }
+    }
+}
+
+enum SubsecondPrecision: String, Codable, CaseIterable, Identifiable {
+    case seconds, milliseconds, microseconds, nanoseconds
+
+    var id: String { rawValue }
+    var fractionalDigits: Int {
+        switch self {
+        case .seconds: return 0
+        case .milliseconds: return 3
+        case .microseconds: return 6
+        case .nanoseconds: return 9
+        }
+    }
+    var title: String {
+        switch self {
+        case .seconds: return "Seconds"
+        case .milliseconds: return "Milliseconds"
+        case .microseconds: return "Microseconds"
+        case .nanoseconds: return "Nanoseconds"
+        }
+    }
+
+    func fractionText(of interval: TimeInterval) -> String? {
+        let digits = fractionalDigits
+        guard digits > 0 else { return nil }
+        let scale = Int(pow(10.0, Double(digits)))
+        let fraction = interval - floor(interval)
+        let value = min(scale - 1, max(0, Int(fraction * Double(scale))))
+        return String(format: "%0*d", digits, value)
     }
 }
 
@@ -128,6 +160,18 @@ struct AgeSnapshot {
 }
 
 enum AgeCalculator {
+    static func remainingParts(birth: BirthDetails, now: Date, lifespanYears: Int) -> DateComponents? {
+        guard lifespanYears >= 0, let birthDate = birth.date,
+              let endDate = birth.calendar.date(byAdding: .year, value: lifespanYears, to: birthDate) else {
+            return nil
+        }
+        let boundedNow = min(now, endDate)
+        return birth.calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: boundedNow,
+            to: endDate)
+    }
+
     /// Clamp leap-day anniversaries to February 28 in non-leap years.
     static func anniversary(of birth: BirthDetails, year: Int) -> Date? {
         let calendar = birth.calendar

@@ -16,7 +16,8 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     private var sessionActive = true
 
     init(store: PreferencesStore, showSettings: @escaping () -> Void) {
-        let cardSize = AgeCardView.size(for: store.preferences.cardFormat)
+        let cardSize = AgeCardView.size(for: store.preferences.cardFormat,
+                                        precision: store.preferences.subsecondPrecision)
         panel = DesktopPanel(contentRect: NSRect(origin: .zero, size: cardSize),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
@@ -65,7 +66,8 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     }
 
     func apply(_ preferences: LifePreferences) {
-        let cardSize = AgeCardView.size(for: preferences.cardFormat)
+        let cardSize = AgeCardView.size(for: preferences.cardFormat,
+                                        precision: preferences.subsecondPrecision)
         if panel.contentView?.frame.size != cardSize {
             panel.setContentSize(cardSize)
             keepOnScreen()

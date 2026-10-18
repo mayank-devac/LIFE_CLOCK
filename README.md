@@ -25,8 +25,10 @@ Widget configuration uses Apple's [configurable widget API](https://developer.ap
 - **Detailed age:** calendar years, months and days, followed by hours, minutes, seconds and milliseconds on the live card.
 - **Decimal years:** completed birthdays plus the fraction of the actual interval between the previous and next birthday, rather than dividing by a fixed 365 days.
 - **Total seconds:** elapsed seconds since the saved birth instant, with three decimal places on the live card.
-- **Live age card:** a compact live row of days, hours, minutes and seconds. This is the default desktop-card display.
-- The desktop card has its own format setting in the app. Set each widget’s format separately through **Edit Widget**; the live age card is a desktop-card-only layout.
+- **Live age card:** a compact live row of years, months, days, hours, minutes and seconds. This is the default desktop-card display.
+- **Years remaining:** shows years, months, days, hours, minutes and seconds counting down to 80 years after the saved birth date, then stays at zero.
+- For the live age card and countdown, choose seconds, milliseconds, microseconds or nanoseconds under **Subsecond precision**. The displayed fractional digits follow the selected precision; actual updates are limited by macOS display refresh and clock precision.
+- The desktop card has its own format setting in the app. Set each widget’s format separately through **Edit Widget**; the live age card and countdown are desktop-card-only layouts.
 - Drag the card background to move it. By default it sits behind normal app windows. **Always on top** makes it float above normal windows. Its position is remembered and brought back onto a connected screen after display changes.
 - The menu-bar hourglass opens settings, shows/enables the card or quits the app. The card's gear opens settings. Quitting stops the live card and birthday checks; a standard widget may continue showing its scheduled snapshots.
 - The live card updates up to 30 times per second while visible, pauses while hidden/asleep, and updates once a second with Reduce Motion enabled. It does not count timer ticks: every frame is calculated from the current date, so sleep does not lose elapsed time.

@@ -38,10 +38,56 @@ final class AgeCalculatorTests: XCTestCase {
     }
 
     func testDesktopFormatDecodesPreviouslySavedAgeFormats() throws {
+        XCTAssertTrue(DesktopCardFormat.allCases.contains(.countdown))
         for format in AgeFormat.allCases {
             let data = try JSONEncoder().encode(format)
             XCTAssertEqual(try JSONDecoder().decode(DesktopCardFormat.self, from: data).rawValue, format.rawValue)
         }
+    }
+
+    func testRemainingLifeCountsDownToTargetAndClampsAtZero() throws {
+        let birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
+        let oneSecondLeft = try XCTUnwrap(AgeCalculator.remainingParts(
+            birth: birth, now: date("2079-12-31T23:59:59Z"), lifespanYears: 80))
+        XCTAssertEqual(oneSecondLeft.year, 0)
+        XCTAssertEqual(oneSecondLeft.month, 0)
+        XCTAssertEqual(oneSecondLeft.day, 0)
+        XCTAssertEqual(oneSecondLeft.hour, 0)
+        XCTAssertEqual(oneSecondLeft.minute, 0)
+        XCTAssertEqual(oneSecondLeft.second, 1)
+
+        let afterTarget = try XCTUnwrap(AgeCalculator.remainingParts(
+            birth: birth, now: date("2080-01-01T00:00:01Z"), lifespanYears: 80))
+        XCTAssertEqual(afterTarget.year, 0)
+        XCTAssertEqual(afterTarget.month, 0)
+        XCTAssertEqual(afterTarget.day, 0)
+        XCTAssertEqual(afterTarget.hour, 0)
+        XCTAssertEqual(afterTarget.minute, 0)
+        XCTAssertEqual(afterTarget.second, 0)
+        XCTAssertNil(AgeCalculator.remainingParts(birth: birth, now: Date(), lifespanYears: -1))
+
+        let oneMonthLeft = try XCTUnwrap(AgeCalculator.remainingParts(
+            birth: birth, now: date("2079-12-01T00:00:00Z"), lifespanYears: 80))
+        XCTAssertEqual(oneMonthLeft.year, 0)
+        XCTAssertEqual(oneMonthLeft.month, 1)
+        XCTAssertEqual(oneMonthLeft.day, 0)
+    }
+
+    func testSubsecondPrecisionFormatsSelectedDigits() {
+        let interval = 12.123456789
+        XCTAssertNil(SubsecondPrecision.seconds.fractionText(of: interval))
+        XCTAssertEqual(SubsecondPrecision.milliseconds.fractionText(of: interval), "123")
+        XCTAssertEqual(SubsecondPrecision.microseconds.fractionText(of: interval), "123456")
+        XCTAssertEqual(SubsecondPrecision.nanoseconds.fractionText(of: interval), "123456789")
+        XCTAssertEqual(SubsecondPrecision.nanoseconds.fractionText(of: 12), "000000000")
+    }
+
+    func testPreferencesDecodeWithoutNewSubsecondSetting() throws {
+        let data = Data(#"{"birth":null,"cardFormat":"countdown","cardEnabled":true,"alwaysOnTop":false}"#.utf8)
+        let preferences = try JSONDecoder().decode(LifePreferences.self, from: data)
+        XCTAssertEqual(preferences.cardFormat, .countdown)
+        XCTAssertEqual(preferences.subsecondPrecision, .seconds)
+        XCTAssertTrue(preferences.cardEnabled)
     }
 
     func testDateOnlyUsesSelectedTimezoneMidnight() throws {

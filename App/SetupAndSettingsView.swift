@@ -121,6 +121,13 @@ struct SetupAndSettingsView: View {
                 Section("Desktop card") {
                     Toggle("Show card", isOn: $draft.cardEnabled)
                     formatPicker("Display", selection: $draft.cardFormat)
+                    if draft.cardFormat == .liveAge || draft.cardFormat == .countdown {
+                        Picker("Subsecond precision", selection: $draft.subsecondPrecision) {
+                            ForEach(SubsecondPrecision.allCases) { precision in
+                                Text(precision.title).tag(precision)
+                            }
+                        }
+                    }
                     Toggle("Keep on top", isOn: $draft.alwaysOnTop)
                     Toggle("Open at login", isOn: $launchAtLogin)
                     if needsLoginApproval {

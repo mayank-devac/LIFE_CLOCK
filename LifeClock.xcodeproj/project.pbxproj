@@ -15,6 +15,7 @@
 		596EC73D9134F1440CCADB8C /* BirthdayPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B8491806A065122C9A3AE64 /* BirthdayPolicyTests.swift */; };
 		69C795D757D81B9707DE06BE /* BirthdayCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB55324C19146CBC4AF1242 /* BirthdayCoordinator.swift */; };
 		94A90F18993C811B5726D470 /* AgeCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7865E0E4B2A20BD43A087224 /* AgeCalculatorTests.swift */; };
+		D7E6F0B457B53E4E146782A1 /* PreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A7618D5726A726D32EB43A /* PreferencesStore.swift */; };
 		9662B02819043712BE10D78B /* SetupAndSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7182C7FEED112C4441FE49B2 /* SetupAndSettingsView.swift */; };
 		A06713D3CF2937ECABEEAEB9 /* DesktopCardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A74AAC49A8B22C3D6F3D60 /* DesktopCardController.swift */; };
 		A60B06CC76512F4ADE29CB12 /* AgeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F327CC2005F1FCDA9BA56781 /* AgeCalculator.swift */; };
@@ -296,6 +297,7 @@
 				94A90F18993C811B5726D470 /* AgeCalculatorTests.swift in Sources */,
 				596EC73D9134F1440CCADB8C /* BirthdayPolicyTests.swift in Sources */,
 				B584AAA386F6FE761A4CF7DC /* AgeCalculator.swift in Sources */,
+				D7E6F0B457B53E4E146782A1 /* PreferencesStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -4,8 +4,32 @@ import Foundation
 struct LifePreferences: Codable, Equatable {
     var birth: BirthDetails?
     var cardFormat: DesktopCardFormat = .liveAge
+    var subsecondPrecision: SubsecondPrecision = .seconds
     var cardEnabled = true
     var alwaysOnTop = false
+
+    init(birth: BirthDetails? = nil, cardFormat: DesktopCardFormat = .liveAge,
+         subsecondPrecision: SubsecondPrecision = .seconds, cardEnabled: Bool = true,
+         alwaysOnTop: Bool = false) {
+        self.birth = birth
+        self.cardFormat = cardFormat
+        self.subsecondPrecision = subsecondPrecision
+        self.cardEnabled = cardEnabled
+        self.alwaysOnTop = alwaysOnTop
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case birth, cardFormat, subsecondPrecision, cardEnabled, alwaysOnTop
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        birth = try values.decodeIfPresent(BirthDetails.self, forKey: .birth)
+        cardFormat = try values.decodeIfPresent(DesktopCardFormat.self, forKey: .cardFormat) ?? .liveAge
+        subsecondPrecision = try values.decodeIfPresent(SubsecondPrecision.self, forKey: .subsecondPrecision) ?? .seconds
+        cardEnabled = try values.decodeIfPresent(Bool.self, forKey: .cardEnabled) ?? true
+        alwaysOnTop = try values.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
+    }
 }
 
 final class PreferencesStore: ObservableObject {
