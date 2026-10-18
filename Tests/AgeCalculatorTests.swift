@@ -73,21 +73,30 @@ final class AgeCalculatorTests: XCTestCase {
         XCTAssertEqual(oneMonthLeft.day, 0)
     }
 
-    func testSubsecondPrecisionFormatsSelectedDigits() {
+    func testSubsecondUnitsFormatSeparateValues() {
         let interval = 12.123456789
-        XCTAssertNil(SubsecondPrecision.seconds.fractionText(of: interval))
-        XCTAssertEqual(SubsecondPrecision.milliseconds.fractionText(of: interval), "123")
-        XCTAssertEqual(SubsecondPrecision.microseconds.fractionText(of: interval), "123456")
-        XCTAssertEqual(SubsecondPrecision.nanoseconds.fractionText(of: interval), "123456789")
-        XCTAssertEqual(SubsecondPrecision.nanoseconds.fractionText(of: 12), "000000000")
+        XCTAssertEqual(SubsecondUnit.milliseconds.formattedValue(of: interval), "123")
+        XCTAssertEqual(SubsecondUnit.microseconds.formattedValue(of: interval), "456")
+        XCTAssertEqual(SubsecondUnit.nanoseconds.formattedValue(of: interval), "789")
+        XCTAssertEqual(SubsecondUnit.picoseconds.formattedValue(of: interval), "000")
+        for unit in SubsecondUnit.allCases {
+            XCTAssertLessThanOrEqual(unit.formattedValue(of: interval).count, 3)
+        }
+        XCTAssertEqual(SubsecondUnit.picoseconds.formattedValue(of: 12), "000")
     }
 
     func testPreferencesDecodeWithoutNewSubsecondSetting() throws {
         let data = Data(#"{"birth":null,"cardFormat":"countdown","cardEnabled":true,"alwaysOnTop":false}"#.utf8)
         let preferences = try JSONDecoder().decode(LifePreferences.self, from: data)
         XCTAssertEqual(preferences.cardFormat, .countdown)
-        XCTAssertEqual(preferences.subsecondPrecision, .seconds)
+        XCTAssertTrue(preferences.subsecondUnits.isEmpty)
         XCTAssertTrue(preferences.cardEnabled)
+    }
+
+    func testPreferencesMigrateLegacySubsecondPrecision() throws {
+        let data = Data(#"{"birth":null,"cardFormat":"countdown","subsecondPrecision":"nanoseconds","cardEnabled":true,"alwaysOnTop":false}"#.utf8)
+        let preferences = try JSONDecoder().decode(LifePreferences.self, from: data)
+        XCTAssertEqual(preferences.subsecondUnits, [.milliseconds, .microseconds, .nanoseconds])
     }
 
     func testDateOnlyUsesSelectedTimezoneMidnight() throws {

@@ -94,34 +94,43 @@ enum DesktopCardFormat: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum SubsecondPrecision: String, Codable, CaseIterable, Identifiable {
-    case seconds, milliseconds, microseconds, nanoseconds
+enum SubsecondUnit: String, Codable, CaseIterable, Hashable, Identifiable {
+    case milliseconds, microseconds, nanoseconds, picoseconds
 
     var id: String { rawValue }
-    var fractionalDigits: Int {
+    var groupIndex: Int {
         switch self {
-        case .seconds: return 0
-        case .milliseconds: return 3
-        case .microseconds: return 6
-        case .nanoseconds: return 9
+        case .milliseconds: return 0
+        case .microseconds: return 1
+        case .nanoseconds: return 2
+        case .picoseconds: return 3
         }
     }
     var title: String {
         switch self {
-        case .seconds: return "Seconds"
         case .milliseconds: return "Milliseconds"
         case .microseconds: return "Microseconds"
         case .nanoseconds: return "Nanoseconds"
+        case .picoseconds: return "Picoseconds (estimated)"
+        }
+    }
+    var shortLabel: String {
+        switch self {
+        case .milliseconds: return "MILI"
+        case .microseconds: return "MICROSEC"
+        case .nanoseconds: return "NANO"
+        case .picoseconds: return "pico"
         }
     }
 
-    func fractionText(of interval: TimeInterval) -> String? {
-        let digits = fractionalDigits
-        guard digits > 0 else { return nil }
-        let scale = Int(pow(10.0, Double(digits)))
+    func formattedValue(of interval: TimeInterval) -> String {
+        let scale: Int64 = 1_000_000_000_000
         let fraction = interval - floor(interval)
-        let value = min(scale - 1, max(0, Int(fraction * Double(scale))))
-        return String(format: "%0*d", digits, value)
+        let value = min(scale - 1, max(0, Int64(fraction * Double(scale))))
+        let digits = String(format: "%012lld", value)
+        let start = digits.index(digits.startIndex, offsetBy: groupIndex * 3)
+        let end = digits.index(start, offsetBy: 3)
+        return String(digits[start..<end])
     }
 }
 

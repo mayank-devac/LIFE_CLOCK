@@ -4,29 +4,48 @@ import Foundation
 struct LifePreferences: Codable, Equatable {
     var birth: BirthDetails?
     var cardFormat: DesktopCardFormat = .liveAge
-    var subsecondPrecision: SubsecondPrecision = .seconds
+    var subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds]
     var cardEnabled = true
     var alwaysOnTop = false
 
     init(birth: BirthDetails? = nil, cardFormat: DesktopCardFormat = .liveAge,
-         subsecondPrecision: SubsecondPrecision = .seconds, cardEnabled: Bool = true,
+         subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds],
+         cardEnabled: Bool = true,
          alwaysOnTop: Bool = false) {
         self.birth = birth
         self.cardFormat = cardFormat
-        self.subsecondPrecision = subsecondPrecision
+        self.subsecondUnits = subsecondUnits
         self.cardEnabled = cardEnabled
         self.alwaysOnTop = alwaysOnTop
     }
 
     private enum CodingKeys: String, CodingKey {
-        case birth, cardFormat, subsecondPrecision, cardEnabled, alwaysOnTop
+        case birth, cardFormat, subsecondUnits, cardEnabled, alwaysOnTop
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case subsecondPrecision
+    }
+
+    private enum LegacySubsecondPrecision: String, Decodable {
+        case seconds, milliseconds, microseconds, nanoseconds
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyValues = try decoder.container(keyedBy: LegacyCodingKeys.self)
         birth = try values.decodeIfPresent(BirthDetails.self, forKey: .birth)
         cardFormat = try values.decodeIfPresent(DesktopCardFormat.self, forKey: .cardFormat) ?? .liveAge
-        subsecondPrecision = try values.decodeIfPresent(SubsecondPrecision.self, forKey: .subsecondPrecision) ?? .seconds
+        if let units = try values.decodeIfPresent(Set<SubsecondUnit>.self, forKey: .subsecondUnits) {
+            subsecondUnits = units
+        } else {
+            switch try legacyValues.decodeIfPresent(LegacySubsecondPrecision.self, forKey: .subsecondPrecision) ?? .seconds {
+            case .seconds: subsecondUnits = []
+            case .milliseconds: subsecondUnits = [.milliseconds]
+            case .microseconds: subsecondUnits = [.milliseconds, .microseconds]
+            case .nanoseconds: subsecondUnits = [.milliseconds, .microseconds, .nanoseconds]
+            }
+        }
         cardEnabled = try values.decodeIfPresent(Bool.self, forKey: .cardEnabled) ?? true
         alwaysOnTop = try values.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
     }

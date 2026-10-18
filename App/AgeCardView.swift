@@ -7,24 +7,24 @@ final class CardActivity: ObservableObject {
 
 struct AgeCardView: View {
     static let size = NSSize(width: 236, height: 84)
-    private static let liveAgeSize = NSSize(width: 280, height: 64)
+    private static let liveAgeBaseSize = NSSize(width: 350, height: 100)
     @ObservedObject var store: PreferencesStore
     @ObservedObject var activity: CardActivity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let showSettings: () -> Void
 
-    static func size(for format: DesktopCardFormat, precision: SubsecondPrecision = .seconds) -> NSSize {
+    static func size(for format: DesktopCardFormat, subsecondUnits: Set<SubsecondUnit> = []) -> NSSize {
         guard [.liveAge, .countdown].contains(format) else { return size }
-        let extraPrecisionWidth = CGFloat(precision.fractionalDigits / 3) * 16
-        return NSSize(width: liveAgeSize.width + extraPrecisionWidth, height: liveAgeSize.height)
+        let extraPrecisionWidth = CGFloat(subsecondUnits.count) * 40
+        return NSSize(width: liveAgeBaseSize.width + extraPrecisionWidth, height: liveAgeBaseSize.height)
     }
 
     var body: some View {
         let format = store.preferences.cardFormat
-        let precision = store.preferences.subsecondPrecision
-        let cardSize = Self.size(for: format, precision: precision)
+        let subsecondUnits = store.preferences.subsecondUnits
+        let cardSize = Self.size(for: format, subsecondUnits: subsecondUnits)
         let liveCard = format == .liveAge || format == .countdown
-        let refreshInterval = reduceMotion ? 1 : (liveCard ? (precision == .seconds ? 1 : 0.05) : 0.5)
+        let refreshInterval = reduceMotion ? 1 : (liveCard ? (subsecondUnits.isEmpty ? 1 : 0.049) : 0.5)
         TimelineView(.animation(minimumInterval: refreshInterval,
                                 paused: !activity.isRunning)) { context in
             VStack(spacing: 4) {
@@ -43,9 +43,17 @@ struct AgeCardView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.5)
             .padding(.horizontal, [.liveAge, .countdown].contains(format) ? 0 : 14)
-            .frame(width: cardSize.width, height: cardSize.height)
+            .frame(minWidth: cardSize.width, maxWidth: .infinity, minHeight: cardSize.height, maxHeight: .infinity)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .overlay(CardDragSurface(showSettings: showSettings))
+            .overlay(alignment: .bottomTrailing) {
+                if liveCard {
+                    ResizeCornerHandle(minimumSize: cardSize)
+                        .frame(width: 20, height: 20)
+                        .padding(3)
+                        .accessibilityLabel("Resize Life Clock card")
+                }
+            }
         }
     }
 
@@ -68,12 +76,12 @@ struct AgeCardView: View {
             Text(age.totalSeconds.formatted(.number.precision(.fractionLength(3))))
         case .liveAge:
             if let birth = store.preferences.birth {
-                LiveAgeCardView(birth: birth, precision: store.preferences.subsecondPrecision, now: date)
+                LiveAgeCardView(birth: birth, subsecondUnits: store.preferences.subsecondUnits, now: date)
             }
         case .countdown:
             if let birth = store.preferences.birth {
                 LiveAgeCardView(birth: birth, mode: .remaining,
-                                precision: store.preferences.subsecondPrecision, now: date)
+                                subsecondUnits: store.preferences.subsecondUnits, now: date)
             }
         }
     }
@@ -112,7 +120,7 @@ struct LiveAgeCardView: View {
     let birth: BirthDetails
     var mode: Mode = .age
     var lifespanYears = 80
-    var precision: SubsecondPrecision = .seconds
+    var subsecondUnits: Set<SubsecondUnit> = []
     var now: Date = .now
 
     private var parts: DateComponents? {
@@ -143,39 +151,42 @@ struct LiveAgeCardView: View {
 
     var body: some View {
         if let parts, let fractionalInterval {
-            HStack(alignment: .center, spacing: 10) {
-                unit(parts.year, "YRS")
-                unit(parts.month, "MOS")
-                unit(parts.day, "DAYS", pad: false)
-                unit(parts.hour, "HRS")
-                unit(parts.minute, "MIN")
-                unit(parts.second, "SEC", fraction: precision.fractionText(of: fractionalInterval))
+            HStack(alignment: .center, spacing: 8) {
+                unit(parts.year, "YRS", numberSize: 33)
+                unit(parts.month, "MONTH", numberSize: 33)
+                unit(parts.day, "DAYS", numberSize: 33, pad: false)
+                unit(parts.hour, "HRS", numberSize: 33)
+                unit(parts.minute, "MIN", numberSize: 33)
+                unit(parts.second, "SEC", numberSize: 33)
+                ForEach(SubsecondUnit.allCases.filter { subsecondUnits.contains($0) }) { subsecondUnit in
+                    textUnit(subsecondUnit.formattedValue(of: fractionalInterval), subsecondUnit.shortLabel,
+                             numberSize: 18)
+                        .accessibilityLabel("\(subsecondUnit.title): \(subsecondUnit.formattedValue(of: fractionalInterval))")
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
         } else {
             Text("—")
         }
     }
 
-    private func unit(_ value: Int?, _ label: String, pad: Bool = true, fraction: String? = nil) -> some View {
+    private func unit(_ value: Int?, _ label: String, numberSize: CGFloat, pad: Bool = true) -> some View {
         let number = value ?? 0
+        return textUnit(pad ? String(format: "%02d", number) : "\(number)", label, numberSize: numberSize)
+    }
+
+    private func textUnit(_ value: String, _ label: String, numberSize: CGFloat) -> some View {
         return VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(pad ? String(format: "%02d", number) : "\(number)")
-                    .font(.system(size: 23, weight: .bold, design: .rounded))
-                    .contentTransition(.numericText(value: Double(number)))
-                    .animation(.snappy, value: number)
-                if let fraction {
-                    Text(".\(fraction)")
-                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                        .contentTransition(.numericText())
-                        .animation(.snappy, value: fraction)
-                }
-            }
-            .monospacedDigit()
+            Text(value)
+                .font(.system(size: numberSize, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .contentTransition(.numericText())
+                .animation(.snappy, value: value)
             Text(label)
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(.secondary)
         }
@@ -218,5 +229,71 @@ private struct CardDragSurface: NSViewRepresentable {
         }
 
         @objc private func openSettings() { showSettings?() }
+    }
+}
+
+private struct ResizeCornerHandle: NSViewRepresentable {
+    let minimumSize: NSSize
+
+    func makeNSView(context: Context) -> ResizeView {
+        ResizeView(minimumSize: minimumSize)
+    }
+
+    func updateNSView(_ view: ResizeView, context: Context) {
+        view.minimumSize = minimumSize
+    }
+
+    final class ResizeView: NSView {
+        var minimumSize: NSSize
+        private var startingFrame: NSRect?
+        private var startingMouseLocation: NSPoint?
+
+        init(minimumSize: NSSize) {
+            self.minimumSize = minimumSize
+            super.init(frame: .zero)
+            setAccessibilityElement(true)
+            setAccessibilityRole(.button)
+            setAccessibilityLabel("Resize Life Clock card")
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .resizeUpDown)
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+            let grip = NSBezierPath()
+            for offset: CGFloat in [6, 10, 14] {
+                grip.move(to: NSPoint(x: bounds.maxX - offset, y: bounds.minY + 2))
+                grip.line(to: NSPoint(x: bounds.maxX - 2, y: bounds.minY + offset))
+            }
+            NSColor.secondaryLabelColor.withAlphaComponent(0.8).setStroke()
+            grip.lineWidth = 1.5
+            grip.stroke()
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            startingFrame = window?.frame
+            startingMouseLocation = NSEvent.mouseLocation
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let startingFrame, let startingMouseLocation, let window else { return }
+            let mouseLocation = NSEvent.mouseLocation
+            let width = max(minimumSize.width, startingFrame.width + mouseLocation.x - startingMouseLocation.x)
+            let height = max(minimumSize.height, startingFrame.height - mouseLocation.y + startingMouseLocation.y)
+            window.setFrame(NSRect(x: startingFrame.minX,
+                                   y: startingFrame.maxY - height,
+                                   width: width,
+                                   height: height), display: true)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            window?.saveFrame(usingName: "LifeClockCard")
+            startingFrame = nil
+            startingMouseLocation = nil
+        }
     }
 }

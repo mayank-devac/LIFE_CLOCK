@@ -2,6 +2,12 @@ import CoreLocation
 import ServiceManagement
 import SwiftUI
 
+struct TimezoneMatch: Identifiable {
+    var id: String { zone.identifier + label }
+    let label: String
+    let zone: TimeZone
+}
+
 struct SetupAndSettingsView: View {
     @ObservedObject var store: PreferencesStore
     let onSaved: () -> Void
@@ -12,7 +18,7 @@ struct SetupAndSettingsView: View {
     @State private var needsLoginApproval = false
     @State private var errorMessage: String?
     @State private var cityQuery = ""
-    @State private var cityResults: [CLPlacemark] = []
+    @State private var cityResults: [TimezoneMatch] = []
     @State private var cityError: String?
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
@@ -90,22 +96,20 @@ struct SetupAndSettingsView: View {
                         Button(action: searchCity) {
                             Image(systemName: "magnifyingglass")
                         }
+                        .buttonStyle(.borderless)
                         .accessibilityLabel("Find timezone for city")
                         .disabled(cityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSearching)
                         if isSearching { ProgressView().controlSize(.small) }
                     }
-                    ForEach(cityResults.indices, id: \.self) { index in
-                        let place = cityResults[index]
-                        if let zone = place.timeZone {
-                            Button {
-                                birth.timeZoneID = zone.identifier
-                                cancelSearch()
-                            } label: {
-                                HStack {
-                                    Text(placeLabel(place))
-                                    Spacer()
-                                    Text(timezoneLabel(zone)).foregroundStyle(.secondary)
-                                }
+                    ForEach(cityResults) { place in
+                        Button {
+                            birth.timeZoneID = place.zone.identifier
+                            cancelSearch()
+                        } label: {
+                            HStack {
+                                Text(place.label)
+                                Spacer()
+                                Text(timezoneLabel(place.zone)).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -122,9 +126,20 @@ struct SetupAndSettingsView: View {
                     Toggle("Show card", isOn: $draft.cardEnabled)
                     formatPicker("Display", selection: $draft.cardFormat)
                     if draft.cardFormat == .liveAge || draft.cardFormat == .countdown {
-                        Picker("Subsecond precision", selection: $draft.subsecondPrecision) {
-                            ForEach(SubsecondPrecision.allCases) { precision in
-                                Text(precision.title).tag(precision)
+                        HStack(spacing: 10) {
+                            ForEach(SubsecondUnit.allCases) { unit in
+                                Toggle(unit.title, isOn: Binding(
+                                    get: { draft.subsecondUnits.contains(unit) },
+                                    set: { isEnabled in
+                                        if isEnabled {
+                                            draft.subsecondUnits.insert(unit)
+                                        } else {
+                                            draft.subsecondUnits.remove(unit)
+                                        }
+                                    }))
+                                    .toggleStyle(.checkbox)
+                                    .controlSize(.small)
+                                    .font(.caption2)
                             }
                         }
                     }
@@ -191,20 +206,85 @@ struct SetupAndSettingsView: View {
     private func searchCity() {
         let query = cityQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
-        cancelSearch()
+        searchTask?.cancel()
+        geocoder.cancelGeocode()
+        cityError = nil
         isSearching = true
+
+        let localMatches = findLocalTimezones(query: query)
+        cityResults = localMatches
+
         searchTask = Task { @MainActor in
             do {
                 let places = try await geocoder.geocodeAddressString(query)
                 guard !Task.isCancelled else { return }
-                cityResults = places.filter { $0.timeZone != nil }
-                if cityResults.isEmpty { cityError = "No city found. Try adding the country." }
+                var updated = localMatches
+                var seen = Set(localMatches.map(\.zone.identifier))
+                for place in places {
+                    if let zone = place.timeZone, !seen.contains(zone.identifier) {
+                        seen.insert(zone.identifier)
+                        updated.append(TimezoneMatch(label: placeLabel(place), zone: zone))
+                    }
+                }
+                cityResults = updated
+                if cityResults.isEmpty {
+                    cityError = "No city found. Try adding the country or a major city name."
+                }
             } catch {
                 guard !Task.isCancelled else { return }
-                cityError = "Couldn’t find that city. Check your connection or add the country."
+                if cityResults.isEmpty {
+                    cityError = "Couldn’t find that city. Check your connection or add the country."
+                }
             }
             isSearching = false
         }
+    }
+
+    private func findLocalTimezones(query: String) -> [TimezoneMatch] {
+        let q = query.lowercased()
+        var results: [TimezoneMatch] = []
+        var seen = Set<String>()
+
+        let aliases: [String: String] = [
+            "ist": "Asia/Kolkata", "est": "America/New_York", "edt": "America/New_York",
+            "cst": "America/Chicago", "cdt": "America/Chicago", "mst": "America/Denver",
+            "mdt": "America/Denver", "pst": "America/Los_Angeles", "pdt": "America/Los_Angeles",
+            "utc": "UTC", "gmt": "GMT", "bst": "Europe/London", "cet": "Europe/Paris",
+            "cest": "Europe/Paris", "jst": "Asia/Tokyo", "kst": "Asia/Seoul",
+            "sgt": "Asia/Singapore", "hkt": "Asia/Hong_Kong", "aest": "Australia/Sydney",
+            "delhi": "Asia/Kolkata", "mumbai": "Asia/Kolkata", "bangalore": "Asia/Kolkata",
+            "bengaluru": "Asia/Kolkata", "chennai": "Asia/Kolkata", "hyderabad": "Asia/Kolkata",
+            "pune": "Asia/Kolkata", "san francisco": "America/Los_Angeles",
+            "seattle": "America/Los_Angeles", "chicago": "America/Chicago",
+            "new york": "America/New_York", "los angeles": "America/Los_Angeles",
+            "london": "Europe/London", "paris": "Europe/Paris", "berlin": "Europe/Berlin",
+            "tokyo": "Asia/Tokyo", "sydney": "Australia/Sydney", "dubai": "Asia/Dubai",
+            "singapore": "Asia/Singapore", "toronto": "America/Toronto"
+        ]
+
+        if let id = aliases[q], let zone = TimeZone(identifier: id) {
+            let cityName = id.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? id
+            results.append(TimezoneMatch(label: cityName, zone: zone))
+            seen.insert(zone.identifier)
+        }
+
+        for id in TimeZone.knownTimeZoneIdentifiers {
+            guard !seen.contains(id) else { continue }
+            let cityName = id.split(separator: "/").last.map(String.init)?.replacingOccurrences(of: "_", with: " ") ?? id
+            let lowerCity = cityName.lowercased()
+            let lowerID = id.lowercased()
+
+            guard let zone = TimeZone(identifier: id) else { continue }
+            let abbrev = (zone.abbreviation() ?? "").lowercased()
+
+            if lowerCity == q || lowerCity.hasPrefix(q) || lowerCity.contains(q) || lowerID.contains(q) || abbrev == q {
+                results.append(TimezoneMatch(label: cityName, zone: zone))
+                seen.insert(id)
+                if results.count >= 8 { break }
+            }
+        }
+
+        return results
     }
 
     private func formatPicker(_ title: String, selection: Binding<DesktopCardFormat>) -> some View {

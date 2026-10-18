@@ -17,7 +17,7 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
 
     init(store: PreferencesStore, showSettings: @escaping () -> Void) {
         let cardSize = AgeCardView.size(for: store.preferences.cardFormat,
-                                        precision: store.preferences.subsecondPrecision)
+                                        subsecondUnits: store.preferences.subsecondUnits)
         panel = DesktopPanel(contentRect: NSRect(origin: .zero, size: cardSize),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
@@ -29,10 +29,10 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
+        panel.minSize = cardSize
         panel.contentView = NSHostingView(rootView: AgeCardView(store: store, activity: activity,
                                                                showSettings: showSettings))
         if !panel.setFrameUsingName("LifeClockCard") { panel.center() }
-        panel.setContentSize(cardSize)
         panel.setFrameAutosaveName("LifeClockCard")
         keepOnScreen()
 
@@ -67,9 +67,14 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
 
     func apply(_ preferences: LifePreferences) {
         let cardSize = AgeCardView.size(for: preferences.cardFormat,
-                                        precision: preferences.subsecondPrecision)
-        if panel.contentView?.frame.size != cardSize {
-            panel.setContentSize(cardSize)
+                                        subsecondUnits: preferences.subsecondUnits)
+        panel.minSize = cardSize
+        if panel.frame.width < cardSize.width || panel.frame.height < cardSize.height {
+            let top = panel.frame.maxY
+            let width = max(panel.frame.width, cardSize.width)
+            let height = max(panel.frame.height, cardSize.height)
+            panel.setFrame(NSRect(x: panel.frame.minX, y: top - height,
+                                  width: width, height: height), display: true)
             keepOnScreen()
         }
         panel.level = preferences.alwaysOnTop ? .floating
