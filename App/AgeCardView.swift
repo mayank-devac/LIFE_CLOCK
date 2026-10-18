@@ -13,7 +13,7 @@ struct AgeCardView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let showSettings: () -> Void
 
-    static func size(for format: DesktopCardFormat, subsecondUnits: Set<SubsecondUnit> = []) -> NSSize {
+    static func size(for format: DesktopCardFormat, subsecondUnits: Set<SubsecondUnit>) -> NSSize {
         guard [.liveAge, .countdown].contains(format) else { return size }
         let extraPrecisionWidth = CGFloat(subsecondUnits.count) * 40
         return NSSize(width: liveAgeBaseSize.width + extraPrecisionWidth, height: liveAgeBaseSize.height)
@@ -190,6 +190,159 @@ struct LiveAgeCardView: View {
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// Wallpaper layout: the age fills the whole screen, centered on a glass pane,
+// sizing computed once from the screen. The panel ignores the mouse in this
+// mode so desktop icons stay clickable underneath.
+struct WallpaperAgeView: View {
+    private struct Metrics {
+        let digit: CGFloat
+        let gap: CGFloat
+        let panePadding: CGFloat
+    }
+
+    @ObservedObject var store: PreferencesStore
+    @ObservedObject var activity: CardActivity
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let refreshInterval = reduceMotion
+            ? 1
+            : (store.preferences.subsecondUnits.isEmpty ? 1 : 0.049)
+        TimelineView(.animation(minimumInterval: refreshInterval,
+                                paused: !activity.isRunning)) { context in
+            GeometryReader { geometry in
+                centerContent(size: geometry.size, now: context.date)
+            }
+        }
+    }
+
+    @ViewBuilder private func centerContent(size: CGSize, now: Date) -> some View {
+        if let birth = store.preferences.birth, let birthDate = birth.date {
+            let metrics = metrics(size: size)
+            let parts = birth.calendar.dateComponents(
+                [.year, .month, .day, .hour, .minute, .second],
+                from: birthDate,
+                to: max(now, birthDate))
+            let fractional = max(0, now.timeIntervalSince(birthDate))
+            HStack(alignment: .center, spacing: metrics.gap) {
+                ForEach(Array(units(parts: parts, fractional: fractional).enumerated()), id: \.offset) { unit in
+                    numberUnit(text: unit.element.text, label: unit.element.label,
+                               metrics: metrics, animated: unit.element.animated)
+                }
+            }
+            .modifier(WallpaperGlassModifier(enabled: store.preferences.wallpaperGlass,
+                                             panePadding: metrics.panePadding))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        } else {
+            let metrics = metrics(size: size)
+            Text("—")
+                .font(.system(size: metrics.digit * 1.2, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .modifier(WallpaperGlassModifier(enabled: store.preferences.wallpaperGlass,
+                                                 panePadding: metrics.panePadding))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .accessibilityLabel("Set your birthday in Settings")
+        }
+    }
+
+    // One row: six main units in order, then the enabled subsecond groups.
+    private func units(parts: DateComponents, fractional: TimeInterval)
+        -> [(text: String, label: String, animated: Bool)] {
+        var rows = [
+            (text: String(format: "%02d", parts.year ?? 0), label: "Years", animated: true),
+            (text: String(format: "%02d", parts.month ?? 0), label: "Months", animated: true),
+            (text: "\(parts.day ?? 0)", label: "Days", animated: true),
+            (text: String(format: "%02d", parts.hour ?? 0), label: "HRS", animated: true),
+            (text: String(format: "%02d", parts.minute ?? 0), label: "MINS", animated: true),
+            (text: String(format: "%02d", parts.second ?? 0), label: "SECS", animated: true),
+        ]
+        rows += store.preferences.subsecondUnits
+            .sorted { $0.groupIndex < $1.groupIndex }
+            .map { unit -> (String, String, Bool) in
+                (unit.formattedValue(of: fractional), unit.shortLabel, false)
+            }
+        return rows
+    }
+
+    private func metrics(size: CGSize) -> Metrics {
+        let unitCount = CGFloat(6 + store.preferences.subsecondUnits.count)
+        let digit = min(size.height * 0.24, size.width / unitCount * 0.13)
+        let gap = min(64, size.width / (unitCount + 1) * 0.26, digit * 0.55)
+        let panePadding = min(max(size.height * 0.06, 30), 80)
+        return Metrics(digit: digit, gap: gap, panePadding: panePadding)
+    }
+
+    private func numberUnit(text: String, label: String, metrics: Metrics, animated: Bool) -> some View {
+        VStack(alignment: .leading, spacing: metrics.digit * 0.12) {
+            Text(text)
+                .font(.system(size: metrics.digit, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .contentTransition(animated ? .numericText() : .identity)
+                .animation(animated ? .snappy : nil, value: text)
+            Text(label.uppercased())
+                .font(.system(size: max(10, metrics.digit * 0.15), weight: .medium))
+                .tracking(max(1, metrics.digit * 0.06))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// Wallpaper glass: frosted pane behind the big digits with a subtle top gloss,
+// bright rim and soft shadow — the "liquid glass" look on macOS 26+.
+private struct WallpaperGlassModifier: ViewModifier {
+    let enabled: Bool
+    let panePadding: CGFloat
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .modifier(GlassPaneModifier(cornerRadius: panePadding * 1.4, padding: panePadding))
+        } else {
+            content
+                .padding(.horizontal, panePadding)
+                .padding(.vertical, panePadding * 0.75)
+                .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
+        }
+    }
+}
+
+private struct GlassPaneModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let padding: CGFloat
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let gloss = LinearGradient(
+            stops: [
+                .init(color: .white.opacity(0.20), location: 0.0),
+                .init(color: .white.opacity(0.03), location: 0.32),
+                .init(color: .white.opacity(0.06), location: 0.78),
+                .init(color: .white.opacity(0.12), location: 1.0),
+            ],
+            startPoint: .top, endPoint: .bottom)
+        paneBase(content)
+            .overlay { gloss.clipShape(shape).allowsHitTesting(false) }
+            .overlay {
+                shape.strokeBorder(.white.opacity(0.16), lineWidth: 1).allowsHitTesting(false)
+            }
+            .shadow(color: .black.opacity(0.22), radius: 26, x: 0, y: 14)
+    }
+
+    @ViewBuilder private func paneBase(_ content: some View) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let padded = content
+            .padding(.horizontal, padding)
+            .padding(.vertical, padding * 0.75)
+        if #available(macOS 26.0, *) {
+            padded.glassEffect(.regular, in: shape)
+        } else {
+            padded.background(.ultraThinMaterial, in: shape)
         }
     }
 }

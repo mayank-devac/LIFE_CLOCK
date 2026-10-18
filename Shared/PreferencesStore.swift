@@ -7,20 +7,26 @@ struct LifePreferences: Codable, Equatable {
     var subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds]
     var cardEnabled = true
     var alwaysOnTop = false
+    var wallpaperMode = false
+    var wallpaperGlass = true
 
     init(birth: BirthDetails? = nil, cardFormat: DesktopCardFormat = .liveAge,
          subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds],
          cardEnabled: Bool = true,
-         alwaysOnTop: Bool = false) {
+         alwaysOnTop: Bool = false,
+         wallpaperMode: Bool = false,
+         wallpaperGlass: Bool = true) {
         self.birth = birth
         self.cardFormat = cardFormat
         self.subsecondUnits = subsecondUnits
         self.cardEnabled = cardEnabled
         self.alwaysOnTop = alwaysOnTop
+        self.wallpaperMode = wallpaperMode
+        self.wallpaperGlass = wallpaperGlass
     }
 
     private enum CodingKeys: String, CodingKey {
-        case birth, cardFormat, subsecondUnits, cardEnabled, alwaysOnTop
+        case birth, cardFormat, subsecondUnits, cardEnabled, alwaysOnTop, wallpaperMode, wallpaperGlass
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -48,6 +54,8 @@ struct LifePreferences: Codable, Equatable {
         }
         cardEnabled = try values.decodeIfPresent(Bool.self, forKey: .cardEnabled) ?? true
         alwaysOnTop = try values.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
+        wallpaperMode = try values.decodeIfPresent(Bool.self, forKey: .wallpaperMode) ?? false
+        wallpaperGlass = try values.decodeIfPresent(Bool.self, forKey: .wallpaperGlass) ?? true
     }
 }
 

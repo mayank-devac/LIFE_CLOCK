@@ -24,7 +24,7 @@ struct SetupAndSettingsView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var geocoder = CLGeocoder()
 
-    static let size = CGSize(width: 620, height: 610)
+    static let size = CGSize(width: 620, height: 700)
 
     private var birthTimeBinding: Binding<Date> {
         // Use a stable clock-only reference so changing time never changes the selected DOB.
@@ -143,7 +143,20 @@ struct SetupAndSettingsView: View {
                             }
                         }
                     }
+                    Toggle("Wallpaper mode (full screen)", isOn: Binding(
+                        get: { draft.wallpaperMode },
+                        set: { on in
+                            draft.wallpaperMode = on
+                            if on { draft.alwaysOnTop = false }
+                        }))
+                    if draft.wallpaperMode {
+                        Toggle("Frosted glass pane", isOn: $draft.wallpaperGlass)
+                        Text("Fills the whole screen behind the desktop icons: above the wallpaper, below every window and icon, clicks pass through. The card's drag, resize and gear controls do nothing here — use the menu-bar hourglass to reopen these settings. The screen frame is used, so digits can sit behind the menu bar and Dock.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     Toggle("Keep on top", isOn: $draft.alwaysOnTop)
+                        .disabled(draft.wallpaperMode)
                     Toggle("Open at login", isOn: $launchAtLogin)
                     if needsLoginApproval {
                         Button("Allow in Login Items…") { SMAppService.openSystemSettingsLoginItems() }

@@ -14,8 +14,13 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     private var awake = true
     private var displayAwake = true
     private var sessionActive = true
+    private var wallpaperActive = false
+    private let store: PreferencesStore
+    private let showSettings: () -> Void
 
     init(store: PreferencesStore, showSettings: @escaping () -> Void) {
+        self.store = store
+        self.showSettings = showSettings
         let cardSize = AgeCardView.size(for: store.preferences.cardFormat,
                                         subsecondUnits: store.preferences.subsecondUnits)
         panel = DesktopPanel(contentRect: NSRect(origin: .zero, size: cardSize),
@@ -66,22 +71,48 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     }
 
     func apply(_ preferences: LifePreferences) {
-        let cardSize = AgeCardView.size(for: preferences.cardFormat,
-                                        subsecondUnits: preferences.subsecondUnits)
-        panel.minSize = cardSize
-        if panel.frame.width < cardSize.width || panel.frame.height < cardSize.height {
-            let top = panel.frame.maxY
-            let width = max(panel.frame.width, cardSize.width)
-            let height = max(panel.frame.height, cardSize.height)
-            panel.setFrame(NSRect(x: panel.frame.minX, y: top - height,
-                                  width: width, height: height), display: true)
-            keepOnScreen()
+        let wallpaper = preferences.wallpaperMode
+        let switchedModes = wallpaper != wallpaperActive
+        if switchedModes {
+            wallpaperActive = wallpaper
+            // Swap the presentation view and autosave slot only when the mode
+            // changes; the free card keeps its controls, the wallpaper view
+            // fills the screen chrome-free. A separate autosave name keeps the
+            // free card's remembered position intact during wallpaper runs.
+            panel.contentView = NSHostingView(
+                rootView: wallpaper
+                    ? AnyView(WallpaperAgeView(store: store, activity: activity))
+                    : AnyView(AgeCardView(store: store, activity: activity,
+                                          showSettings: showSettings)))
+            panel.setFrameAutosaveName(wallpaper ? "LifeClockWallpaper" : "LifeClockCard")
         }
-        panel.level = preferences.alwaysOnTop ? .floating
-            : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
-        panel.collectionBehavior = preferences.alwaysOnTop
-            ? [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-            : [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        if wallpaper {
+            panel.minSize = .zero
+            panel.hasShadow = false
+            panel.ignoresMouseEvents = true
+            panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+            panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            refreshWallpaperFrame()
+        } else {
+            let cardSize = AgeCardView.size(for: preferences.cardFormat,
+                                            subsecondUnits: preferences.subsecondUnits)
+            panel.minSize = cardSize
+            panel.hasShadow = true
+            panel.ignoresMouseEvents = false
+            if panel.frame.width < cardSize.width || panel.frame.height < cardSize.height {
+                let top = panel.frame.maxY
+                let width = max(panel.frame.width, cardSize.width)
+                let height = max(panel.frame.height, cardSize.height)
+                panel.setFrame(NSRect(x: panel.frame.minX, y: top - height,
+                                      width: width, height: height), display: true)
+            }
+            panel.level = preferences.alwaysOnTop ? .floating
+                : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+            panel.collectionBehavior = preferences.alwaysOnTop
+                ? [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+                : [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            if switchedModes { keepOnScreen() }
+        }
         if preferences.cardEnabled && preferences.birth != nil { show() } else { panel.orderOut(nil) }
         updateActivity()
     }
@@ -92,15 +123,25 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
         updateActivity()
     }
 
-    func windowDidMove(_ notification: Notification) { panel.saveFrame(usingName: "LifeClockCard") }
+    func windowDidMove(_ notification: Notification) {
+        panel.saveFrame(usingName: panel.frameAutosaveName)
+    }
 
     private func keepOnScreen() {
+        if wallpaperActive { refreshWallpaperFrame(); return }
         guard !NSScreen.screens.contains(where: { $0.visibleFrame.contains(panel.frame) }),
               let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let area = screen.visibleFrame
         let origin = NSPoint(x: max(area.minX, min(panel.frame.minX, area.maxX - panel.frame.width)),
                              y: max(area.minY, min(panel.frame.minY, area.maxY - panel.frame.height)))
         panel.setFrameOrigin(origin)
+    }
+
+    // Wallpaper mode covers the whole screen frame — the full wallpaper area,
+    // including what sits behind the menu bar and the Dock.
+    private func refreshWallpaperFrame() {
+        guard let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        panel.setFrame(screen.frame, display: true)
     }
 
     private func updateActivity() {
