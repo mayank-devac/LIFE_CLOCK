@@ -1,6 +1,7 @@
 import CoreLocation
 import ServiceManagement
 import SwiftUI
+import AppKit
 
 struct TimezoneMatch: Identifiable {
     var id: String { zone.identifier + label }
@@ -8,10 +9,28 @@ struct TimezoneMatch: Identifiable {
     let zone: TimeZone
 }
 
+struct ScreenChoice: Identifiable {
+    let id: Int          // CGDirectDisplayID; 0 means automatic
+    let name: String
+}
+
+extension ScreenChoice {
+    static func current() -> [ScreenChoice] {
+        var choices = [ScreenChoice(id: 0, name: "Automatic")]
+        for (index, screen) in NSScreen.screens.enumerated() {
+            let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? Int ?? 0
+            let size = screen.frame.size
+            let area = "\(Int(size.width)) × \(Int(size.height))"
+            let name = screen.localizedName.isEmpty ? "Display \(index + 1)" : screen.localizedName
+            choices.append(ScreenChoice(id: number, name: "\(name) · \(area)"))
+        }
+        return choices
+    }
+}
+
 struct SetupAndSettingsView: View {
     @ObservedObject var store: PreferencesStore
     let onSaved: () -> Void
-    @State private var draft = LifePreferences()
     @State private var birth = BirthDetails(year: 2000, month: 1, day: 1,
                                            timeZoneID: TimeZone.current.identifier)
     @State private var launchAtLogin = false
@@ -24,7 +43,7 @@ struct SetupAndSettingsView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var geocoder = CLGeocoder()
 
-    static let size = CGSize(width: 620, height: 700)
+    static let size = CGSize(width: 620, height: 800)
 
     private var birthTimeBinding: Binding<Date> {
         // Use a stable clock-only reference so changing time never changes the selected DOB.
@@ -35,7 +54,78 @@ struct SetupAndSettingsView: View {
             let parts = Calendar(identifier: .gregorian).dateComponents([.hour, .minute], from: date)
             birth.hour = parts.hour
             birth.minute = parts.minute
+            applyBirthday()
         })
+    }
+
+    // Everything lives straight in the store; there is no draft or Save button.
+    // Any control change persists immediately and the card reacts live.
+    private func preferenceBinding<T: Equatable>(_ keyPath: WritableKeyPath<LifePreferences, T>)
+        -> Binding<T> {
+        Binding(get: { store.preferences[keyPath: keyPath] },
+                set: { value in
+                    var updated = store.preferences
+                    guard updated[keyPath: keyPath] != value else { return }
+                    updated[keyPath: keyPath] = value
+                    persist(updated)
+                })
+    }
+
+    private func subsecondBinding(_ unit: SubsecondUnit) -> Binding<Bool> {
+        Binding(get: { store.preferences.subsecondUnits.contains(unit) },
+                set: { isEnabled in
+                    var updated = store.preferences
+                    if isEnabled {
+                        updated.subsecondUnits.insert(unit)
+                    } else {
+                        updated.subsecondUnits.remove(unit)
+                    }
+                    persist(updated)
+                })
+    }
+
+    private func applyBirthday() {
+        var updated = store.preferences
+        updated.birth = birth
+        persisted(updated)
+    }
+
+    private func persisted(_ updated: LifePreferences) {
+        do {
+            try store.save(updated)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func persist(_ updated: LifePreferences) {
+        do {
+            try store.save(updated)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func setLaunchAtLogin(_ want: Bool) -> Bool {
+        do {
+            let service = SMAppService.mainApp
+            if want && service.status != .enabled && service.status != .requiresApproval {
+                try service.register()
+            } else if !want && (service.status == .enabled || service.status == .requiresApproval) {
+                try service.unregister()
+            }
+            needsLoginApproval = service.status == .requiresApproval
+            if needsLoginApproval {
+                errorMessage = "macOS needs your approval in Login Items before automatic launch can work."
+            } else {
+                errorMessage = nil
+            }
+            return true
+        } catch {
+            errorMessage = "Launch at login could not be changed: \(error.localizedDescription)"
+            return false
+        }
     }
 
     var body: some View {
@@ -75,11 +165,13 @@ struct SetupAndSettingsView: View {
                             .labelsHidden()
                         }
                     }
-                    .onChange(of: birth.month) { _, _ in clampDay() }
-                    .onChange(of: birth.year) { _, _ in clampDay() }
+                    .onChange(of: birth.day) { _, _ in applyBirthday() }
+                    .onChange(of: birth.month) { _, _ in clampDay(); applyBirthday() }
+                    .onChange(of: birth.year) { _, _ in clampDay(); applyBirthday() }
                     Toggle("Add birth time", isOn: Binding(get: { birth.hasBirthTime }, set: { known in
                         birth.hour = known ? 0 : nil
                         birth.minute = known ? 0 : nil
+                        applyBirthday()
                     }))
                     if birth.hasBirthTime {
                         DatePicker("Time", selection: birthTimeBinding, displayedComponents: .hourAndMinute)
@@ -105,6 +197,7 @@ struct SetupAndSettingsView: View {
                         Button {
                             birth.timeZoneID = place.zone.identifier
                             cancelSearch()
+                            applyBirthday()
                         } label: {
                             HStack {
                                 Text(place.label)
@@ -120,23 +213,16 @@ struct SetupAndSettingsView: View {
                         cancelSearch()
                         birth.timeZoneID = TimeZone.current.identifier
                         cityQuery = ""
+                        applyBirthday()
                     }
                 }
                 Section("Desktop card") {
-                    Toggle("Show card", isOn: $draft.cardEnabled)
-                    formatPicker("Display", selection: $draft.cardFormat)
-                    if draft.cardFormat == .liveAge || draft.cardFormat == .countdown {
+                    Toggle("Show card", isOn: preferenceBinding(\.cardEnabled))
+                    formatPicker("Display", selection: preferenceBinding(\.cardFormat))
+                    if store.preferences.cardFormat == .liveAge || store.preferences.cardFormat == .countdown {
                         HStack(spacing: 10) {
                             ForEach(SubsecondUnit.allCases) { unit in
-                                Toggle(unit.title, isOn: Binding(
-                                    get: { draft.subsecondUnits.contains(unit) },
-                                    set: { isEnabled in
-                                        if isEnabled {
-                                            draft.subsecondUnits.insert(unit)
-                                        } else {
-                                            draft.subsecondUnits.remove(unit)
-                                        }
-                                    }))
+                                Toggle(unit.title, isOn: subsecondBinding(unit))
                                     .toggleStyle(.checkbox)
                                     .controlSize(.small)
                                     .font(.caption2)
@@ -144,20 +230,73 @@ struct SetupAndSettingsView: View {
                         }
                     }
                     Toggle("Wallpaper mode (full screen)", isOn: Binding(
-                        get: { draft.wallpaperMode },
+                        get: { store.preferences.wallpaperMode },
                         set: { on in
-                            draft.wallpaperMode = on
-                            if on { draft.alwaysOnTop = false }
+                            var updated = store.preferences
+                            updated.wallpaperMode = on
+                            if on { updated.alwaysOnTop = false }
+                            persist(updated)
                         }))
-                    if draft.wallpaperMode {
-                        Toggle("Frosted glass pane", isOn: $draft.wallpaperGlass)
-                        Text("Fills the whole screen behind the desktop icons: above the wallpaper, below every window and icon, clicks pass through. The card's drag, resize and gear controls do nothing here — use the menu-bar hourglass to reopen these settings. The screen frame is used, so digits can sit behind the menu bar and Dock.")
+                    if store.preferences.wallpaperMode {
+                        Toggle("Frosted glass pane", isOn: preferenceBinding(\.wallpaperGlass))
+                        Picker("Screen", selection: preferenceBinding(\.wallpaperDisplay)) {
+                            ForEach(ScreenChoice.current()) { choice in
+                                Text(choice.name).tag(choice.id)
+                            }
+                        }
+                        if store.preferences.wallpaperDisplay != 0 {
+                            Text("If that display disconnects, the card falls back to the current screen.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Picker("Layout", selection: preferenceBinding(\.wallpaperCustomLayout)) {
+                            Text("Automatic · centered, full").tag(false)
+                            Text("Custom").tag(true)
+                        }
+                        if store.preferences.wallpaperCustomLayout {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Slider(value: preferenceBinding(\.wallpaperOffsetX), in: -1...1)
+                                    .accessibilityLabel("Move clock right and left")
+                                Text("Horizontal · left ↔ right").font(.caption2).foregroundStyle(.secondary)
+                                Slider(value: preferenceBinding(\.wallpaperOffsetY), in: -1...1)
+                                    .accessibilityLabel("Move clock up and down")
+                                Text("Vertical · down ↔ up").font(.caption2).foregroundStyle(.secondary)
+                                Slider(value: preferenceBinding(\.wallpaperSize), in: 0.4...2)
+                                    .accessibilityLabel("Clock size")
+                                Text("Size · 1.0 = full width").font(.caption2).foregroundStyle(.secondary)
+                                Slider(value: preferenceBinding(\.wallpaperRoundness), in: 0...2.6)
+                                    .accessibilityLabel("Pane roundness")
+                                Text("Roundness · 0 = sharp corners").font(.caption2).foregroundStyle(.secondary)
+                                HStack {
+                                    Button("Reset to centered full") {
+                                        var updated = store.preferences
+                                        updated.wallpaperOffsetX = 0
+                                        updated.wallpaperOffsetY = 0
+                                        updated.wallpaperSize = 1
+                                        updated.wallpaperRoundness = 1.4
+                                        persisted(updated)
+                                    }
+                                    Spacer()
+                                    Text(String(format: "h %.2f · v %.2f · size %.2f · round %.2f",
+                                                store.preferences.wallpaperOffsetX,
+                                                store.preferences.wallpaperOffsetY,
+                                                store.preferences.wallpaperSize,
+                                                store.preferences.wallpaperRoundness))
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        Text("Fills the screen behind the desktop icons: above the wallpaper, below every window and icon, clicks pass through. The card's drag, resize and gear controls do nothing here — use the menu-bar hourglass to reopen these settings.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    Toggle("Keep on top", isOn: $draft.alwaysOnTop)
-                        .disabled(draft.wallpaperMode)
-                    Toggle("Open at login", isOn: $launchAtLogin)
+                    Toggle("Keep on top", isOn: preferenceBinding(\.alwaysOnTop))
+                        .disabled(store.preferences.wallpaperMode)
+                    Toggle("Open at login", isOn: Binding(
+                        get: { launchAtLogin },
+                        set: { want in if setLaunchAtLogin(want) { launchAtLogin = want } }))
                     if needsLoginApproval {
                         Button("Allow in Login Items…") { SMAppService.openSystemSettingsLoginItems() }
                     }
@@ -170,13 +309,6 @@ struct SetupAndSettingsView: View {
             if let errorMessage {
                 Text(errorMessage).font(.caption).foregroundStyle(.red)
                     .accessibilityLabel("Settings error: \(errorMessage)")
-            }
-            HStack {
-                Spacer()
-                Button("Save") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isSearching || !cityResults.isEmpty)
             }
         }
         .padding(20)
@@ -307,36 +439,8 @@ struct SetupAndSettingsView: View {
     }
 
     private func load() {
-        draft = store.preferences
-        if let savedBirth = draft.birth { birth = savedBirth }
+        if let savedBirth = store.preferences.birth { birth = savedBirth }
         launchAtLogin = SMAppService.mainApp.status == .enabled || SMAppService.mainApp.status == .requiresApproval
         needsLoginApproval = SMAppService.mainApp.status == .requiresApproval
-        errorMessage = nil
-    }
-
-    private func save() {
-        draft.birth = birth
-        do {
-            try store.save(draft)
-        } catch {
-            errorMessage = error.localizedDescription
-            return
-        }
-        do {
-            let service = SMAppService.mainApp
-            if launchAtLogin && service.status != .enabled && service.status != .requiresApproval {
-                try service.register()
-            } else if !launchAtLogin && (service.status == .enabled || service.status == .requiresApproval) {
-                try service.unregister()
-            }
-            needsLoginApproval = service.status == .requiresApproval
-            if needsLoginApproval {
-                errorMessage = "Birthday saved. macOS needs your approval in Login Items before automatic launch can work."
-            } else {
-                errorMessage = nil
-            }
-        } catch {
-            errorMessage = "Birthday saved, but launch at login could not be changed: \(error.localizedDescription)"
-        }
     }
 }

@@ -9,13 +9,25 @@ struct LifePreferences: Codable, Equatable {
     var alwaysOnTop = false
     var wallpaperMode = false
     var wallpaperGlass = true
+    var wallpaperDisplay = 0
+    var wallpaperCustomLayout = false
+    var wallpaperOffsetX = 0.0     // -1 (left) … 1 (right), half-screen shift
+    var wallpaperOffsetY = 0.0     // -1 (down) … 1 (up), half-screen shift
+    var wallpaperSize = 1.0        // 1 = full width; 0.4 … 2.0
+    var wallpaperRoundness = 1.4   // 0 = sharp corners; relative to pane padding
 
     init(birth: BirthDetails? = nil, cardFormat: DesktopCardFormat = .liveAge,
          subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds],
          cardEnabled: Bool = true,
          alwaysOnTop: Bool = false,
          wallpaperMode: Bool = false,
-         wallpaperGlass: Bool = true) {
+         wallpaperGlass: Bool = true,
+         wallpaperDisplay: Int = 0,
+         wallpaperCustomLayout: Bool = false,
+         wallpaperOffsetX: Double = 0,
+         wallpaperOffsetY: Double = 0,
+         wallpaperSize: Double = 1,
+         wallpaperRoundness: Double = 1.4) {
         self.birth = birth
         self.cardFormat = cardFormat
         self.subsecondUnits = subsecondUnits
@@ -23,10 +35,18 @@ struct LifePreferences: Codable, Equatable {
         self.alwaysOnTop = alwaysOnTop
         self.wallpaperMode = wallpaperMode
         self.wallpaperGlass = wallpaperGlass
+        self.wallpaperDisplay = wallpaperDisplay
+        self.wallpaperCustomLayout = wallpaperCustomLayout
+        self.wallpaperOffsetX = wallpaperOffsetX
+        self.wallpaperOffsetY = wallpaperOffsetY
+        self.wallpaperSize = wallpaperSize
+        self.wallpaperRoundness = wallpaperRoundness
     }
 
     private enum CodingKeys: String, CodingKey {
-        case birth, cardFormat, subsecondUnits, cardEnabled, alwaysOnTop, wallpaperMode, wallpaperGlass
+        case birth, cardFormat, subsecondUnits, cardEnabled, alwaysOnTop
+        case wallpaperMode, wallpaperGlass, wallpaperDisplay
+        case wallpaperCustomLayout, wallpaperOffsetX, wallpaperOffsetY, wallpaperSize, wallpaperRoundness
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -56,6 +76,12 @@ struct LifePreferences: Codable, Equatable {
         alwaysOnTop = try values.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
         wallpaperMode = try values.decodeIfPresent(Bool.self, forKey: .wallpaperMode) ?? false
         wallpaperGlass = try values.decodeIfPresent(Bool.self, forKey: .wallpaperGlass) ?? true
+        wallpaperDisplay = try values.decodeIfPresent(Int.self, forKey: .wallpaperDisplay) ?? 0
+        wallpaperCustomLayout = try values.decodeIfPresent(Bool.self, forKey: .wallpaperCustomLayout) ?? false
+        wallpaperOffsetX = try values.decodeIfPresent(Double.self, forKey: .wallpaperOffsetX) ?? 0
+        wallpaperOffsetY = try values.decodeIfPresent(Double.self, forKey: .wallpaperOffsetY) ?? 0
+        wallpaperSize = try values.decodeIfPresent(Double.self, forKey: .wallpaperSize) ?? 1
+        wallpaperRoundness = try values.decodeIfPresent(Double.self, forKey: .wallpaperRoundness) ?? 1.4
     }
 }
 
@@ -78,8 +104,10 @@ final class PreferencesStore: ObservableObject {
         }
     }
 
+    // Nil birth is a valid unconfigured state (fresh install). A present birth
+    // must be a real past date; the picker nudges the user until it validates.
     func save(_ updated: LifePreferences) throws {
-        guard let birth = updated.birth, let date = birth.date, date <= Date() else {
+        if let birth = updated.birth, let date = birth.date, date > Date() {
             throw SettingsError.invalidBirthday
         }
         let data = try JSONEncoder().encode(updated)

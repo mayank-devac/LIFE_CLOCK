@@ -24,7 +24,11 @@ struct AgeCardView: View {
         let subsecondUnits = store.preferences.subsecondUnits
         let cardSize = Self.size(for: format, subsecondUnits: subsecondUnits)
         let liveCard = format == .liveAge || format == .countdown
-        let refreshInterval = reduceMotion ? 1 : (liveCard ? (subsecondUnits.isEmpty ? 1 : 0.049) : 0.5)
+        // Subsecond columns need frame-rate sampling: a fixed ~50 ms cap aligns
+        // to whole vsync intervals (3 frames at 60 Hz), so every step is an
+        // exact multiple of 1,000 µs and the microsecond group never advances.
+        let refreshInterval: Double? = reduceMotion ? 1
+            : (liveCard ? (subsecondUnits.isEmpty ? 1 : nil) : 0.5)
         TimelineView(.animation(minimumInterval: refreshInterval,
                                 paused: !activity.isRunning)) { context in
             VStack(spacing: 4) {
@@ -201,7 +205,11 @@ struct WallpaperAgeView: View {
     private struct Metrics {
         let digit: CGFloat
         let gap: CGFloat
+        let columnWidth: CGFloat
+        let rowWidth: CGFloat
         let panePadding: CGFloat
+        let paneWidth: CGFloat
+        let paneHeight: CGFloat
     }
 
     @ObservedObject var store: PreferencesStore
@@ -209,9 +217,11 @@ struct WallpaperAgeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let refreshInterval = reduceMotion
+        // Same frame-rate rule as the card: a 50 ms cap would freeze the
+        // microsecond digits on whole vsync multiples of 1,000 µs.
+        let refreshInterval: Double? = reduceMotion
             ? 1
-            : (store.preferences.subsecondUnits.isEmpty ? 1 : 0.049)
+            : (store.preferences.subsecondUnits.isEmpty ? 1 : nil)
         TimelineView(.animation(minimumInterval: refreshInterval,
                                 paused: !activity.isRunning)) { context in
             GeometryReader { geometry in
@@ -221,29 +231,39 @@ struct WallpaperAgeView: View {
     }
 
     @ViewBuilder private func centerContent(size: CGSize, now: Date) -> some View {
-        if let birth = store.preferences.birth, let birthDate = birth.date {
-            let metrics = metrics(size: size)
+        let preferences = store.preferences
+        if let birth = preferences.birth, let birthDate = birth.date {
+            let metrics = metrics(size: size, scale: preferences.wallpaperSize)
             let parts = birth.calendar.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second],
                 from: birthDate,
                 to: max(now, birthDate))
             let fractional = max(0, now.timeIntervalSince(birthDate))
+            let maxSlackX = max(0, (size.width - metrics.paneWidth) / 2)
+            let maxSlackY = max(0, (size.height - metrics.paneHeight) / 2)
             HStack(alignment: .center, spacing: metrics.gap) {
                 ForEach(Array(units(parts: parts, fractional: fractional).enumerated()), id: \.offset) { unit in
                     numberUnit(text: unit.element.text, label: unit.element.label,
                                metrics: metrics, animated: unit.element.animated)
                 }
             }
-            .modifier(WallpaperGlassModifier(enabled: store.preferences.wallpaperGlass,
-                                             panePadding: metrics.panePadding))
+            .frame(width: metrics.rowWidth)
+            .modifier(WallpaperGlassModifier(enabled: preferences.wallpaperGlass,
+                                             panePadding: metrics.panePadding,
+                                             roundness: preferences.wallpaperRoundness))
+            // Offsets use only the slack left on each axis, so the pane can
+            // never leave the screen borders; the slider ends touch the edges.
+            .offset(x: preferences.wallpaperOffsetX * maxSlackX,
+                    y: -preferences.wallpaperOffsetY * maxSlackY)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         } else {
-            let metrics = metrics(size: size)
+            let metrics = metrics(size: size, scale: 1)
             Text("—")
                 .font(.system(size: metrics.digit * 1.2, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .modifier(WallpaperGlassModifier(enabled: store.preferences.wallpaperGlass,
-                                                 panePadding: metrics.panePadding))
+                                                 panePadding: metrics.panePadding,
+                                                 roundness: store.preferences.wallpaperRoundness))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .accessibilityLabel("Set your birthday in Settings")
         }
@@ -268,16 +288,30 @@ struct WallpaperAgeView: View {
         return rows
     }
 
-    private func metrics(size: CGSize) -> Metrics {
-        let unitCount = CGFloat(6 + store.preferences.subsecondUnits.count)
-        let digit = min(size.height * 0.24, size.width / unitCount * 0.13)
-        let gap = min(64, size.width / (unitCount + 1) * 0.26, digit * 0.55)
-        let panePadding = min(max(size.height * 0.06, 30), 80)
-        return Metrics(digit: digit, gap: gap, panePadding: panePadding)
+    // Equal-width columns across a wide hero row. Digit size is capped twice so
+    // the pane stays inside the screen: once by the scaled row width, once by
+    // the scaled screen height. Offsets then only use the leftover slack.
+    private func metrics(size: CGSize, scale: Double) -> Metrics {
+        let columns = CGFloat(6 + store.preferences.subsecondUnits.count)
+        let panePadding = min(max(size.height * 0.07, 36), 110)
+        let growth = CGFloat(max(0.05, scale))
+        let targetRow = size.width * 0.9 * growth
+        let columnAdvance = 2.4 + (columns > 1 ? 0.55 : 0)
+        let verticalBudget = (size.height - panePadding * 1.5) / 1.4
+        let digit = min(size.height * 0.26 * growth,
+                        targetRow / (columns * columnAdvance - 0.55),
+                        verticalBudget)
+        let gap = digit * 0.55
+        let columnWidth = digit * 2.4
+        let rowWidth = columns * columnWidth + (columns - 1) * gap
+        return Metrics(digit: digit, gap: gap, columnWidth: columnWidth,
+                       rowWidth: rowWidth, panePadding: panePadding,
+                       paneWidth: rowWidth + panePadding * 2,
+                       paneHeight: digit * 1.4 + panePadding * 1.5)
     }
 
     private func numberUnit(text: String, label: String, metrics: Metrics, animated: Bool) -> some View {
-        VStack(alignment: .leading, spacing: metrics.digit * 0.12) {
+        VStack(alignment: .center, spacing: metrics.digit * 0.1) {
             Text(text)
                 .font(.system(size: metrics.digit, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -288,8 +322,11 @@ struct WallpaperAgeView: View {
             Text(label.uppercased())
                 .font(.system(size: max(10, metrics.digit * 0.15), weight: .medium))
                 .tracking(max(1, metrics.digit * 0.06))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(.secondary)
         }
+        .frame(width: metrics.columnWidth)
     }
 }
 
@@ -298,11 +335,12 @@ struct WallpaperAgeView: View {
 private struct WallpaperGlassModifier: ViewModifier {
     let enabled: Bool
     let panePadding: CGFloat
+    let roundness: CGFloat
 
     func body(content: Content) -> some View {
         if enabled {
             content
-                .modifier(GlassPaneModifier(cornerRadius: panePadding * 1.4, padding: panePadding))
+                .modifier(GlassPaneModifier(cornerRadius: panePadding * roundness, padding: panePadding))
         } else {
             content
                 .padding(.horizontal, panePadding)
