@@ -33,10 +33,11 @@ struct AgeCardView: View {
                                 paused: !activity.isRunning)) { context in
             VStack(spacing: 4) {
                 if let birth = store.preferences.birth,
-                   let age = AgeCalculator.snapshot(birth: birth, now: context.date) {
-                    ageContent(age, date: context.date)
+                   let age = AgeCalculator.snapshot(birth: birth, now: context.date),
+                   let reading = age.reading(for: format, birth: birth, now: context.date) {
+                    ageContent(age, reading: reading, date: context.date)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(accessibilityDescription(age, birth: birth, date: context.date))
+                        .accessibilityLabel(accessibilityDescription(reading, birth: birth))
                 } else {
                     Text("—")
                         .accessibilityLabel("Set your birthday in Settings")
@@ -61,7 +62,7 @@ struct AgeCardView: View {
         }
     }
 
-    @ViewBuilder private func ageContent(_ age: AgeSnapshot, date: Date) -> some View {
+    @ViewBuilder private func ageContent(_ age: AgeSnapshot, reading: ClockReading, date: Date) -> some View {
         switch store.preferences.cardFormat {
         case .detailed:
             Text(String(format: "%02d · %02d · %02d", age.years, age.months, age.days))
@@ -79,34 +80,14 @@ struct AgeCardView: View {
         case .totalSeconds:
             Text(age.totalSeconds.formatted(.number.precision(.fractionLength(3))))
         case .liveAge:
-            if let birth = store.preferences.birth {
-                LiveAgeCardView(birth: birth, subsecondUnits: store.preferences.subsecondUnits, now: date)
-            }
+            LiveAgeCardView(reading: reading, subsecondUnits: store.preferences.subsecondUnits)
         case .countdown:
-            if let birth = store.preferences.birth {
-                LiveAgeCardView(birth: birth, mode: .remaining,
-                                subsecondUnits: store.preferences.subsecondUnits, now: date)
-            }
+            LiveAgeCardView(reading: reading, subsecondUnits: store.preferences.subsecondUnits)
         }
     }
 
-    private func accessibilityDescription(_ age: AgeSnapshot, birth: BirthDetails, date: Date) -> String {
-        let description: String
-        if store.preferences.cardFormat == .liveAge, let birthDate = birth.date {
-            let parts = birth.calendar.dateComponents(
-                [.year, .month, .day, .hour, .minute, .second],
-                from: birthDate,
-                to: max(date, birthDate))
-            description = "\(parts.year ?? 0) years, \(parts.month ?? 0) months, \(parts.day ?? 0) days, " +
-                "\(parts.hour ?? 0) hours, \(parts.minute ?? 0) minutes, \(parts.second ?? 0) seconds"
-        } else if store.preferences.cardFormat == .countdown,
-                  let parts = AgeCalculator.remainingParts(birth: birth, now: date, lifespanYears: 80) {
-            description = "\(parts.year ?? 0) years, \(parts.month ?? 0) months, \(parts.day ?? 0) days, " +
-                "\(parts.hour ?? 0) hours, \(parts.minute ?? 0) minutes, \(parts.second ?? 0) seconds"
-        } else {
-            description = age.accessibleDescription
-        }
-        return description + (birth.hasBirthTime ? "" : ", approximate")
+    private func accessibilityDescription(_ reading: ClockReading, birth: BirthDetails) -> String {
+        reading.accessibleDescription + (birth.hasBirthTime ? "" : ", approximate")
     }
 
     private func separator(_ date: Date) -> some View {
@@ -116,64 +97,26 @@ struct AgeCardView: View {
 }
 
 struct LiveAgeCardView: View {
-    enum Mode: Equatable {
-        case age
-        case remaining
-    }
-
-    let birth: BirthDetails
-    var mode: Mode = .age
-    var lifespanYears = 80
+    let reading: ClockReading
     var subsecondUnits: Set<SubsecondUnit> = []
-    var now: Date = .now
-
-    private var parts: DateComponents? {
-        guard let birthDate = birth.date else { return nil }
-        switch mode {
-        case .age:
-            return birth.calendar.dateComponents(
-                [.year, .month, .day, .hour, .minute, .second],
-                from: birthDate,
-                to: max(now, birthDate))
-        case .remaining:
-            return AgeCalculator.remainingParts(birth: birth, now: now, lifespanYears: lifespanYears)
-        }
-    }
-
-    private var fractionalInterval: TimeInterval? {
-        guard let birthDate = birth.date else { return nil }
-        switch mode {
-        case .age:
-            return max(0, now.timeIntervalSince(birthDate))
-        case .remaining:
-            guard let endDate = birth.calendar.date(byAdding: .year, value: lifespanYears, to: birthDate) else {
-                return nil
-            }
-            return max(0, endDate.timeIntervalSince(now))
-        }
-    }
 
     var body: some View {
-        if let parts, let fractionalInterval {
-            HStack(alignment: .center, spacing: 8) {
-                unit(parts.year, "YRS", numberSize: 33)
-                unit(parts.month, "MONTH", numberSize: 33)
-                unit(parts.day, "DAYS", numberSize: 33, pad: false)
-                unit(parts.hour, "HRS", numberSize: 33)
-                unit(parts.minute, "MIN", numberSize: 33)
-                unit(parts.second, "SEC", numberSize: 33)
-                ForEach(SubsecondUnit.allCases.filter { subsecondUnits.contains($0) }) { subsecondUnit in
-                    SubsecondValueColumn(
-                        value: subsecondUnit.formattedValue(of: fractionalInterval),
-                        label: subsecondUnit.shortLabel,
-                        accessibilityLabel: subsecondUnit.title)
-                }
+        HStack(alignment: .center, spacing: 8) {
+            unit(reading.parts.year, "YRS", numberSize: 33)
+            unit(reading.parts.month, "MONTH", numberSize: 33)
+            unit(reading.parts.day, "DAYS", numberSize: 33, pad: false)
+            unit(reading.parts.hour, "HRS", numberSize: 33)
+            unit(reading.parts.minute, "MIN", numberSize: 33)
+            unit(reading.parts.second, "SEC", numberSize: 33)
+            ForEach(SubsecondUnit.allCases.filter { subsecondUnits.contains($0) }) { subsecondUnit in
+                SubsecondValueColumn(
+                    value: subsecondUnit.formattedValue(of: reading.totalSeconds),
+                    label: subsecondUnit.shortLabel,
+                    accessibilityLabel: subsecondUnit.title)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .padding(.horizontal, 10)
-        } else {
-            Text("—")
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 10)
     }
 
     private func unit(_ value: Int?, _ label: String, numberSize: CGFloat, pad: Bool = true) -> some View {
@@ -275,18 +218,32 @@ struct WallpaperAgeView: View {
                                             maxSlackX: CGFloat, maxSlackY: CGFloat,
                                             fullScreenGlass: Bool, now: Date) -> some View {
         if let birth = preferences.birth, birth.date != nil {
-            let snapshot = ageSnapshot(preferences: preferences, birth: birth, now: now)
-            ageContent(preferences: preferences, birth: birth, parts: snapshot.parts,
-                       fractional: snapshot.fractional, metrics: metrics, now: now)
-            .modifier(WallpaperGlassModifier(enabled: preferences.wallpaperGlass && !fullScreenGlass,
-                                             panePadding: metrics.panePadding,
-                                             roundness: preferences.wallpaperRoundness,
-                                             strength: preferences.wallpaperGlassStrength))
-            .offset(x: preferences.wallpaperOffsetX * maxSlackX,
-                    y: -preferences.wallpaperOffsetY * maxSlackY)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .modifier(WallpaperScreenGlassModifier(enabled: fullScreenGlass,
-                                                   strength: preferences.wallpaperGlassStrength))
+            if let snapshot = AgeCalculator.snapshot(birth: birth, now: now),
+               let reading = snapshot.reading(for: preferences.cardFormat, birth: birth, now: now) {
+                ageContent(preferences: preferences, snapshot: snapshot, reading: reading,
+                           metrics: metrics, now: now)
+                    .modifier(WallpaperGlassModifier(enabled: preferences.wallpaperGlass && !fullScreenGlass,
+                                                     panePadding: metrics.panePadding,
+                                                     roundness: preferences.wallpaperRoundness,
+                                                     strength: preferences.wallpaperGlassStrength))
+                    .offset(x: preferences.wallpaperOffsetX * maxSlackX,
+                            y: -preferences.wallpaperOffsetY * maxSlackY)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .modifier(WallpaperScreenGlassModifier(enabled: fullScreenGlass,
+                                                           strength: preferences.wallpaperGlassStrength))
+            } else {
+                Text("—")
+                    .font(.system(size: metrics.digit * 1.2, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .modifier(WallpaperGlassModifier(enabled: preferences.wallpaperGlass && !fullScreenGlass,
+                                                     panePadding: metrics.panePadding,
+                                                     roundness: preferences.wallpaperRoundness,
+                                                     strength: preferences.wallpaperGlassStrength))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .accessibilityLabel("Set your birthday in Settings")
+                    .modifier(WallpaperScreenGlassModifier(enabled: fullScreenGlass,
+                                                           strength: preferences.wallpaperGlassStrength))
+            }
         } else {
             Text("—")
                 .font(.system(size: metrics.digit * 1.2, weight: .semibold, design: .rounded))
@@ -300,26 +257,6 @@ struct WallpaperAgeView: View {
                 .modifier(WallpaperScreenGlassModifier(enabled: fullScreenGlass,
                                                        strength: preferences.wallpaperGlassStrength))
         }
-    }
-
-    // Countdown rows count down to the 80th birthday; every other format
-    // counts up from birth. Computed outside the ViewBuilder because
-    // conditional assignment is not a buildable statement.
-    private func ageSnapshot(preferences: LifePreferences, birth: BirthDetails, now: Date)
-        -> (parts: DateComponents, fractional: TimeInterval) {
-        let birthDate = birth.date ?? now
-        if preferences.cardFormat == .countdown {
-            let endDate = birth.calendar.date(byAdding: .year, value: 80, to: birthDate)
-                ?? birthDate
-            let parts = AgeCalculator.remainingParts(birth: birth, now: now, lifespanYears: 80)
-                ?? DateComponents()
-            return (parts, max(0, endDate.timeIntervalSince(now)))
-        }
-        let parts = birth.calendar.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: birthDate,
-            to: max(now, birthDate))
-        return (parts, max(0, now.timeIntervalSince(birthDate)))
     }
 
     // One row: six main units in order, then the enabled subsecond groups.
@@ -343,13 +280,12 @@ struct WallpaperAgeView: View {
 
     // Wallpaper bodies per Display format; glass/offsets wrap the whole result.
     @ViewBuilder private func ageContent(preferences: LifePreferences,
-                                         birth: BirthDetails,
-                                         parts: DateComponents, fractional: TimeInterval,
+                                         snapshot: AgeSnapshot, reading: ClockReading,
                                          metrics: Metrics, now: Date) -> some View {
         switch preferences.cardFormat {
         case .liveAge, .countdown:
             HStack(alignment: .center, spacing: metrics.gap) {
-                ForEach(Array(units(parts: parts, fractional: fractional).enumerated()), id: \.offset) { unit in
+                ForEach(Array(units(parts: reading.parts, fractional: reading.totalSeconds).enumerated()), id: \.offset) { unit in
                     numberUnit(text: unit.element.text, label: unit.element.label,
                                metrics: metrics, animated: unit.element.animated)
                 }
@@ -358,16 +294,16 @@ struct WallpaperAgeView: View {
         case .detailed:
             VStack(alignment: .center, spacing: metrics.digit * 0.18) {
                 Text(String(format: "%02d · %02d · %02d",
-                            parts.year ?? 0, parts.month ?? 0, parts.day ?? 0))
+                            reading.parts.year ?? 0, reading.parts.month ?? 0, reading.parts.day ?? 0))
                     .font(.system(size: metrics.digit, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)
                 HStack(alignment: .center, spacing: metrics.digit * 0.18) {
-                    Text(String(format: "%02d", parts.hour ?? 0))
+                    Text(String(format: "%02d", reading.parts.hour ?? 0))
                     Text(":").opacity(secondsPhase(now))
-                    Text(String(format: "%02d", parts.minute ?? 0))
+                    Text(String(format: "%02d", reading.parts.minute ?? 0))
                     Text(":").opacity(secondsPhase(now))
-                    Text(String(format: "%02d", parts.second ?? 0))
+                    Text(String(format: "%02d", reading.parts.second ?? 0))
                 }
                 .font(.system(size: metrics.digit * 0.45, weight: .medium, design: .monospaced))
                 .monospacedDigit()
@@ -375,21 +311,17 @@ struct WallpaperAgeView: View {
             }
             .frame(width: metrics.rowWidth)
         case .decimalYears:
-            if let snapshot = AgeCalculator.snapshot(birth: birth, now: now) {
-                Text(snapshot.decimalYears.formattedDecimalYears(fractionDigits: 9))
-                    .font(.system(size: metrics.digit, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)
-                    .frame(width: metrics.rowWidth)
-            }
+            Text(snapshot.decimalYears.formattedDecimalYears(fractionDigits: 9))
+                .font(.system(size: metrics.digit, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)
+                .frame(width: metrics.rowWidth)
         case .totalSeconds:
-            if let snapshot = AgeCalculator.snapshot(birth: birth, now: now) {
-                Text(snapshot.totalSeconds.formatted(.number.precision(.fractionLength(3))))
-                    .font(.system(size: metrics.digit, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)
-                    .frame(width: metrics.rowWidth)
-            }
+            Text(snapshot.totalSeconds.formatted(.number.precision(.fractionLength(3))))
+                .font(.system(size: metrics.digit, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)
+                .frame(width: metrics.rowWidth)
         }
     }
 

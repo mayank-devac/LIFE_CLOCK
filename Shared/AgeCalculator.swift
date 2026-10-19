@@ -148,6 +148,16 @@ extension Double {
     }
 }
 
+struct ClockReading {
+    let parts: DateComponents
+    let totalSeconds: TimeInterval
+
+    var accessibleDescription: String {
+        "\(parts.year ?? 0) years, \(parts.month ?? 0) months, \(parts.day ?? 0) days, " +
+            "\(parts.hour ?? 0) hours, \(parts.minute ?? 0) minutes, \(parts.second ?? 0) seconds"
+    }
+}
+
 struct AgeSnapshot {
     let years: Int
     let months: Int
@@ -163,22 +173,32 @@ struct AgeSnapshot {
     var clockDescription: String {
         String(format: "%02d:%02d:%02d.%03d", hours, minutes, seconds, milliseconds)
     }
-    var accessibleDescription: String {
-        "\(years) years, \(months) months, \(days) days, \(hours) hours, \(minutes) minutes, \(seconds) seconds"
+    var clock: ClockReading {
+        ClockReading(parts: DateComponents(year: years, month: months, day: days,
+                                           hour: hours, minute: minutes, second: seconds),
+                     totalSeconds: totalSeconds)
+    }
+    var accessibleDescription: String { clock.accessibleDescription }
+
+    func reading(for format: DesktopCardFormat, birth: BirthDetails, now: Date) -> ClockReading? {
+        format == .countdown
+            ? AgeCalculator.remaining(birth: birth, now: now, lifespanYears: 80)
+            : clock
     }
 }
 
 enum AgeCalculator {
-    static func remainingParts(birth: BirthDetails, now: Date, lifespanYears: Int) -> DateComponents? {
-        guard lifespanYears >= 0, let birthDate = birth.date,
+    static func remaining(birth: BirthDetails, now: Date, lifespanYears: Int) -> ClockReading? {
+        guard lifespanYears >= 0, let birthDate = birth.date, birthDate <= now,
               let endDate = birth.calendar.date(byAdding: .year, value: lifespanYears, to: birthDate) else {
             return nil
         }
         let boundedNow = min(now, endDate)
-        return birth.calendar.dateComponents(
+        let parts = birth.calendar.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
             from: boundedNow,
             to: endDate)
+        return ClockReading(parts: parts, totalSeconds: max(0, endDate.timeIntervalSince(now)))
     }
 
     /// Clamp leap-day anniversaries to February 28 in non-leap years.

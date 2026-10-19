@@ -5,6 +5,55 @@ final class AgeCalculatorTests: XCTestCase {
         ISO8601DateFormatter().date(from: value)!
     }
 
+    func testDisplayReadingsShareLeapDayPolicyAndCountdownFractions() throws {
+        let birth = BirthDetails(year: 2000, month: 2, day: 29, timeZoneID: "UTC")
+        let now = date("2023-02-28T00:00:00Z")
+        let age = try XCTUnwrap(AgeCalculator.snapshot(birth: birth, now: now))
+        for format in DesktopCardFormat.allCases where format != .countdown {
+            let reading = try XCTUnwrap(age.reading(for: format, birth: birth, now: now))
+            XCTAssertEqual(reading.parts.year, 23)
+            XCTAssertEqual(reading.parts.month, 0)
+            XCTAssertEqual(reading.parts.day, 0)
+            XCTAssertEqual(reading.totalSeconds, age.totalSeconds)
+            XCTAssertEqual(reading.accessibleDescription,
+                           "23 years, 0 months, 0 days, 0 hours, 0 minutes, 0 seconds")
+        }
+
+        let end = date("2080-02-29T00:00:00Z")
+        let before = end.addingTimeInterval(-1.25)
+        let beforeAge = try XCTUnwrap(AgeCalculator.snapshot(birth: birth, now: before))
+        let remaining = try XCTUnwrap(beforeAge.reading(for: .countdown, birth: birth, now: before))
+        XCTAssertEqual(remaining.parts.second, 1)
+        XCTAssertEqual(remaining.totalSeconds, 1.25, accuracy: 0.00001)
+        let after = try XCTUnwrap(AgeCalculator.remaining(birth: birth, now: end.addingTimeInterval(1), lifespanYears: 80))
+        XCTAssertEqual(after.totalSeconds, 0)
+        XCTAssertEqual(after.parts.second, 0)
+    }
+
+    func testInvalidBirthdaySavePreservesPreviousSettings() throws {
+        let suite = "LifeClockTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PreferencesStore(defaults: defaults)
+        let original = LifePreferences(birth: BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC"))
+        try store.save(original)
+        let invalidBirthdays = [
+            BirthDetails(year: 2024, month: 3, day: 10, hour: 2, minute: 30, timeZoneID: "America/New_York"),
+            BirthDetails(year: 2000, month: 2, day: 30, timeZoneID: "UTC"),
+            BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "invalid"),
+            BirthDetails(year: 9999, month: 1, day: 1, timeZoneID: "UTC")
+        ]
+        for birth in invalidBirthdays {
+            var changed = original
+            changed.birth = birth
+            XCTAssertThrowsError(try store.save(changed))
+            XCTAssertEqual(store.preferences, original)
+            XCTAssertEqual(PreferencesStore(defaults: defaults).preferences, original)
+        }
+        try store.save(LifePreferences())
+        XCTAssertNil(PreferencesStore(defaults: defaults).preferences.birth)
+    }
+
     func testExactBirthdayAndElapsedFractions() throws {
         let birth = BirthDetails(year: 2000, month: 10, day: 19, hour: 12, minute: 30, timeZoneID: "UTC")
         let birthday = date("2026-10-19T12:30:00Z")
@@ -47,30 +96,30 @@ final class AgeCalculatorTests: XCTestCase {
 
     func testRemainingLifeCountsDownToTargetAndClampsAtZero() throws {
         let birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
-        let oneSecondLeft = try XCTUnwrap(AgeCalculator.remainingParts(
+        let oneSecondLeft = try XCTUnwrap(AgeCalculator.remaining(
             birth: birth, now: date("2079-12-31T23:59:59Z"), lifespanYears: 80))
-        XCTAssertEqual(oneSecondLeft.year, 0)
-        XCTAssertEqual(oneSecondLeft.month, 0)
-        XCTAssertEqual(oneSecondLeft.day, 0)
-        XCTAssertEqual(oneSecondLeft.hour, 0)
-        XCTAssertEqual(oneSecondLeft.minute, 0)
-        XCTAssertEqual(oneSecondLeft.second, 1)
+        XCTAssertEqual(oneSecondLeft.parts.year, 0)
+        XCTAssertEqual(oneSecondLeft.parts.month, 0)
+        XCTAssertEqual(oneSecondLeft.parts.day, 0)
+        XCTAssertEqual(oneSecondLeft.parts.hour, 0)
+        XCTAssertEqual(oneSecondLeft.parts.minute, 0)
+        XCTAssertEqual(oneSecondLeft.parts.second, 1)
 
-        let afterTarget = try XCTUnwrap(AgeCalculator.remainingParts(
+        let afterTarget = try XCTUnwrap(AgeCalculator.remaining(
             birth: birth, now: date("2080-01-01T00:00:01Z"), lifespanYears: 80))
-        XCTAssertEqual(afterTarget.year, 0)
-        XCTAssertEqual(afterTarget.month, 0)
-        XCTAssertEqual(afterTarget.day, 0)
-        XCTAssertEqual(afterTarget.hour, 0)
-        XCTAssertEqual(afterTarget.minute, 0)
-        XCTAssertEqual(afterTarget.second, 0)
-        XCTAssertNil(AgeCalculator.remainingParts(birth: birth, now: Date(), lifespanYears: -1))
+        XCTAssertEqual(afterTarget.parts.year, 0)
+        XCTAssertEqual(afterTarget.parts.month, 0)
+        XCTAssertEqual(afterTarget.parts.day, 0)
+        XCTAssertEqual(afterTarget.parts.hour, 0)
+        XCTAssertEqual(afterTarget.parts.minute, 0)
+        XCTAssertEqual(afterTarget.parts.second, 0)
+        XCTAssertNil(AgeCalculator.remaining(birth: birth, now: Date(), lifespanYears: -1))
 
-        let oneMonthLeft = try XCTUnwrap(AgeCalculator.remainingParts(
+        let oneMonthLeft = try XCTUnwrap(AgeCalculator.remaining(
             birth: birth, now: date("2079-12-01T00:00:00Z"), lifespanYears: 80))
-        XCTAssertEqual(oneMonthLeft.year, 0)
-        XCTAssertEqual(oneMonthLeft.month, 1)
-        XCTAssertEqual(oneMonthLeft.day, 0)
+        XCTAssertEqual(oneMonthLeft.parts.year, 0)
+        XCTAssertEqual(oneMonthLeft.parts.month, 1)
+        XCTAssertEqual(oneMonthLeft.parts.day, 0)
     }
 
     func testSubsecondUnitsFormatSeparateValues() {

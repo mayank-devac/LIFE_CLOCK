@@ -97,11 +97,12 @@ struct LifePreferences: Codable, Equatable {
 
 final class PreferencesStore: ObservableObject {
     private static let preferencesKey = "lifePreferences.v1"
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     @Published private(set) var preferences: LifePreferences
     @Published private(set) var readWarning: String?
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         if let data = defaults.data(forKey: Self.preferencesKey) {
             do {
                 preferences = try JSONDecoder().decode(LifePreferences.self, from: data)
@@ -117,8 +118,10 @@ final class PreferencesStore: ObservableObject {
     // Nil birth is a valid unconfigured state (fresh install). A present birth
     // must be a real past date; the picker nudges the user until it validates.
     func save(_ updated: LifePreferences) throws {
-        if let birth = updated.birth, let date = birth.date, date > Date() {
-            throw SettingsError.invalidBirthday
+        if let birth = updated.birth {
+            guard let date = birth.date, date <= Date() else {
+                throw SettingsError.invalidBirthday
+            }
         }
         let data = try JSONEncoder().encode(updated)
         defaults.set(data, forKey: Self.preferencesKey)
