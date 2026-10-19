@@ -123,6 +123,18 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
         updateActivity()
     }
 
+    func resetCardSize() {
+        guard !wallpaperActive else { return }
+        let size = AgeCardView.size(for: store.preferences.cardFormat,
+                                    subsecondUnits: store.preferences.subsecondUnits)
+        let frame = NSRect(x: panel.frame.midX - size.width / 2,
+                           y: panel.frame.midY - size.height / 2,
+                           width: size.width, height: size.height)
+        panel.setFrame(frame, display: true, animate: true)
+        keepOnScreen()
+        panel.saveFrame(usingName: "LifeClockCard")
+    }
+
     func windowDidMove(_ notification: Notification) {
         panel.saveFrame(usingName: panel.frameAutosaveName)
     }

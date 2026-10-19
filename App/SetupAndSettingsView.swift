@@ -30,6 +30,7 @@ extension ScreenChoice {
 
 struct SetupAndSettingsView: View {
     @ObservedObject var store: PreferencesStore
+    let onResetCardSize: () -> Void
     let onSaved: () -> Void
     @State private var birth = BirthDetails(year: 2000, month: 1, day: 1,
                                            timeZoneID: TimeZone.current.identifier)
@@ -228,6 +229,13 @@ struct SetupAndSettingsView: View {
                                     .font(.caption2)
                             }
                         }
+                    }
+                    HStack {
+                        Text("Card size")
+                        Spacer()
+                        Button("Reset card size", action: onResetCardSize)
+                            .disabled(store.preferences.wallpaperMode)
+                            .help("Restore the default size for the selected display format.")
                     }
                     Toggle("Wallpaper mode (full screen)", isOn: Binding(
                         get: { store.preferences.wallpaperMode },

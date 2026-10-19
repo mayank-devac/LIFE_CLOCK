@@ -65,7 +65,9 @@ final class LifeClockDelegate: NSObject, NSApplicationDelegate {
 
     func showSettings() {
         if settingsWindow?.isVisible != true {
-            let view = SetupAndSettingsView(store: store) {
+            let view = SetupAndSettingsView(store: store, onResetCardSize: { [weak card] in
+                card?.resetCardSize()
+            }) {
                 // Keep the settings window open until the user chooses Close.
             }
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: SetupAndSettingsView.size),
