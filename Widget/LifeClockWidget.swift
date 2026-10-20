@@ -119,6 +119,19 @@ struct LifeClockWidgetView: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(age.years) years, \(age.months) months, \(age.days) days old" + (birth.hasBirthTime ? "" : ", approximate") + (entry.isPreview ? ", preview" : ", as of \(entry.date.formatted(date: .omitted, time: .shortened))"))
+                Text(entry.isPreview ? "Preview" : "As of \(entry.date.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .accessibilityHidden(true)
+                if !birth.hasBirthTime {
+                    Text("Approximate")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .accessibilityHidden(true)
+                }
                 if let birthDate = birth.date {
                     Text(birthDate, style: .timer)
                         .font(.system(size: family == .systemSmall ? 19 : 24,
@@ -131,11 +144,16 @@ struct LifeClockWidgetView: View {
                 }
                 Spacer(minLength: 0)
             } else {
-                Spacer()
-                Text("—").font(.title)
-                    .help(entry.setupMessage)
+                Spacer(minLength: 0)
+                Text(entry.setupMessage)
+                    .font(.caption)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(family == .systemSmall ? 5 : 7)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
                     .accessibilityLabel(entry.setupMessage)
-                Spacer()
+                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

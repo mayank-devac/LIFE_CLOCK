@@ -34,6 +34,7 @@ struct SetupAndSettingsView: View {
     let onSaved: () -> Void
     @State private var birth = BirthDetails(year: 2000, month: 1, day: 1,
                                            timeZoneID: TimeZone.current.identifier)
+    @State private var layoutExpanded = true
     @State private var launchAtLogin = false
     @State private var needsLoginApproval = false
     @State private var errorMessage: String?
@@ -190,8 +191,9 @@ struct SetupAndSettingsView: View {
                             Image(systemName: "magnifyingglass")
                         }
                         .buttonStyle(.borderless)
-                        .accessibilityLabel("Find timezone for city")
-                        .disabled(cityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSearching)
+                        .accessibilityLabel("Search local timezones")
+                        .help("Search the built-in timezone list on this Mac.")
+                        .disabled(cityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         if isSearching { ProgressView().controlSize(.small) }
                     }
                     ForEach(cityResults) { place in
@@ -210,6 +212,11 @@ struct SetupAndSettingsView: View {
                     if let cityError {
                         Text(cityError).font(.caption).foregroundStyle(.red)
                     }
+                    Button("Search online with Apple") {
+                        searchOnline()
+                    }
+                    .disabled(cityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSearching)
+                    .help("Sends the city query to Apple for a timezone lookup.")
                     Button("Use Mac timezone · \(timezoneLabel(.current))") {
                         cancelSearch()
                         birth.timeZoneID = TimeZone.current.identifier
@@ -248,12 +255,12 @@ struct SetupAndSettingsView: View {
                     if store.preferences.wallpaperMode {
                         Toggle("Frosted glass pane", isOn: preferenceBinding(\.wallpaperGlass))
                         if store.preferences.wallpaperGlass {
-                            Toggle("Glass across the whole screen", isOn: preferenceBinding(\.wallpaperGlassFullScreen))
+                            Toggle("Full-screen tint / veil", isOn: preferenceBinding(\.wallpaperGlassFullScreen))
                             Slider(value: preferenceBinding(\.wallpaperGlassStrength), in: 0...1)
                                 .accessibilityLabel("Glass strength")
                             Text("Glass strength · clear ↔ veiled").font(.caption2).foregroundStyle(.secondary)
                             if store.preferences.wallpaperGlassFullScreen {
-                                Text("The frost, gloss and translucency cover the entire screen behind the digits; the rounded pane and the roundness slider take no effect.")
+                                Text("A tint / veil covers the whole screen behind the digits; the rounded frosted pane and its roundness slider apply only when this is off.")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -268,11 +275,20 @@ struct SetupAndSettingsView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
-                        Picker("Layout", selection: preferenceBinding(\.wallpaperCustomLayout)) {
-                            Text("Automatic · centered, full").tag(false)
-                            Text("Custom").tag(true)
+                        HStack {
+                            Text("Layout")
+                            Spacer()
+                            Button {
+                                layoutExpanded.toggle()
+                            } label: {
+                                Image(systemName: layoutExpanded ? "chevron.up" : "chevron.down")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(layoutExpanded ? "Collapse layout controls" : "Expand layout controls")
+                            .accessibilityValue(layoutExpanded ? "Expanded" : "Collapsed")
+                            .help(layoutExpanded ? "Hide layout sliders" : "Show layout sliders")
                         }
-                        if store.preferences.wallpaperCustomLayout {
+                        if layoutExpanded {
                             VStack(alignment: .leading, spacing: 8) {
                                 Slider(value: preferenceBinding(\.wallpaperOffsetX), in: -1...1)
                                     .accessibilityLabel("Move clock right and left")
@@ -373,11 +389,22 @@ struct SetupAndSettingsView: View {
         searchTask?.cancel()
         geocoder.cancelGeocode()
         cityError = nil
-        isSearching = true
+        isSearching = false
+        cityResults = findLocalTimezones(query: query)
+        if cityResults.isEmpty {
+            cityError = "No local timezone match. Search online with Apple if you want to try the internet."
+        }
+    }
 
+    private func searchOnline() {
+        let query = cityQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        searchTask?.cancel()
+        geocoder.cancelGeocode()
+        cityError = nil
+        isSearching = true
         let localMatches = findLocalTimezones(query: query)
         cityResults = localMatches
-
         searchTask = Task { @MainActor in
             do {
                 let places = try await geocoder.geocodeAddressString(query)
@@ -397,7 +424,7 @@ struct SetupAndSettingsView: View {
             } catch {
                 guard !Task.isCancelled else { return }
                 if cityResults.isEmpty {
-                    cityError = "Couldn’t find that city. Check your connection or add the country."
+                    cityError = "Couldn’t find that city online. Check your connection or add the country."
                 }
             }
             isSearching = false

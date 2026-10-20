@@ -94,6 +94,37 @@ final class AgeCalculatorTests: XCTestCase {
         }
     }
 
+    func testDesktopFormatTimelineCadenceCoversMotionAndSubseconds() {
+        let cases: [(DesktopCardFormat, Set<SubsecondUnit>, Bool, Double?)] = [
+            (.detailed, [], false, 0.5),
+            (.detailed, [.milliseconds], false, 0.5),
+            (.detailed, [], true, 1),
+            (.detailed, [.milliseconds], true, 1),
+            (.decimalYears, [], false, 0.5),
+            (.decimalYears, [.milliseconds], false, 0.5),
+            (.decimalYears, [], true, 1),
+            (.decimalYears, [.milliseconds], true, 1),
+            (.totalSeconds, [], false, 0.5),
+            (.totalSeconds, [.milliseconds], false, 0.5),
+            (.totalSeconds, [], true, 1),
+            (.totalSeconds, [.milliseconds], true, 1),
+            (.liveAge, [], false, 1),
+            (.liveAge, [.milliseconds], false, nil),
+            (.liveAge, [], true, 1),
+            (.liveAge, [.milliseconds], true, 1),
+            (.countdown, [], false, 1),
+            (.countdown, [.milliseconds], false, nil),
+            (.countdown, [], true, 1),
+            (.countdown, [.milliseconds], true, 1),
+        ]
+
+        for (format, units, reduceMotion, expected) in cases {
+            XCTAssertEqual(format.minimumTimelineInterval(subsecondUnits: units,
+                                                         reduceMotion: reduceMotion), expected,
+                           "Unexpected cadence for \(format), units: \(units), reduce motion: \(reduceMotion)")
+        }
+    }
+
     func testRemainingLifeCountsDownToTargetAndClampsAtZero() throws {
         let birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
         let oneSecondLeft = try XCTUnwrap(AgeCalculator.remaining(

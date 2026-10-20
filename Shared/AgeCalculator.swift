@@ -92,6 +92,18 @@ enum DesktopCardFormat: String, Codable, CaseIterable, Identifiable {
         case .countdown: return "Years remaining"
         }
     }
+
+    /// Select the timeline cadence for this format and its optional fractional units.
+    /// A nil interval lets TimelineView sample every animation frame.
+    func minimumTimelineInterval(subsecondUnits: Set<SubsecondUnit>, reduceMotion: Bool) -> Double? {
+        guard !reduceMotion else { return 1 }
+        switch self {
+        case .liveAge, .countdown:
+            return subsecondUnits.isEmpty ? 1 : nil
+        case .detailed, .decimalYears, .totalSeconds:
+            return 0.5
+        }
+    }
 }
 
 enum SubsecondUnit: String, Codable, CaseIterable, Hashable, Identifiable {

@@ -24,11 +24,8 @@ struct AgeCardView: View {
         let subsecondUnits = store.preferences.subsecondUnits
         let cardSize = Self.size(for: format, subsecondUnits: subsecondUnits)
         let liveCard = format == .liveAge || format == .countdown
-        // Subsecond columns need frame-rate sampling: a fixed ~50 ms cap aligns
-        // to whole vsync intervals (3 frames at 60 Hz), so every step is an
-        // exact multiple of 1,000 µs and the microsecond group never advances.
-        let refreshInterval: Double? = reduceMotion ? 1
-            : (liveCard ? (subsecondUnits.isEmpty ? 1 : nil) : 0.5)
+        let refreshInterval = format.minimumTimelineInterval(subsecondUnits: subsecondUnits,
+                                                              reduceMotion: reduceMotion)
         TimelineView(.animation(minimumInterval: refreshInterval,
                                 paused: !activity.isRunning)) { context in
             VStack(spacing: 4) {
@@ -99,6 +96,7 @@ struct AgeCardView: View {
 struct LiveAgeCardView: View {
     let reading: ClockReading
     var subsecondUnits: Set<SubsecondUnit> = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -133,8 +131,8 @@ struct LiveAgeCardView: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .contentTransition(transition)
-                .animation(animation, value: value)
+                .contentTransition(reduceMotion ? .identity : transition)
+                .animation(reduceMotion ? nil : animation, value: value)
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
@@ -147,27 +145,36 @@ private struct SubsecondValueColumn: View {
     let value: String
     let label: String
     let accessibilityLabel: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .keyframeAnimator(initialValue: 1.0, trigger: value) { content, scale in
-                    content.scaleEffect(scale)
-                } keyframes: { _ in
-                    KeyframeTrack {
-                        LinearKeyframe(1.035, duration: 0.035)
-                        LinearKeyframe(1.0, duration: 0.085)
-                    }
-                }
+            valueText
                 .accessibilityLabel("\(accessibilityLabel): \(value)")
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.8)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var valueText: some View {
+        let text = Text(value)
+            .font(.system(size: 18, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+        if reduceMotion {
+            text
+        } else {
+            text.keyframeAnimator(initialValue: 1.0, trigger: value) { content, scale in
+                content.scaleEffect(scale)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    LinearKeyframe(1.035, duration: 0.035)
+                    LinearKeyframe(1.0, duration: 0.085)
+                }
+            }
         }
     }
 }
@@ -193,8 +200,10 @@ struct WallpaperAgeView: View {
     var body: some View {
         // Same frame-rate rule as the card: subsecond digits get uncapped
         // timeline updates, plain seconds tick once per second.
-        let subsecondCount = store.preferences.subsecondUnits.count
-        let refreshInterval: Double? = reduceMotion ? 1 : (subsecondCount == 0 ? 1 : nil)
+        let format = store.preferences.cardFormat
+        let refreshInterval = format.minimumTimelineInterval(
+            subsecondUnits: store.preferences.subsecondUnits,
+            reduceMotion: reduceMotion)
         // Read every preference OUTSIDE the timeline: a paused timeline caches
         // frames, so live slider changes must not depend on it re-ticking.
         GeometryReader { geometry in
@@ -300,9 +309,9 @@ struct WallpaperAgeView: View {
                     .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)
                 HStack(alignment: .center, spacing: metrics.digit * 0.18) {
                     Text(String(format: "%02d", reading.parts.hour ?? 0))
-                    Text(":").opacity(secondsPhase(now))
+                    Text(":").opacity(reduceMotion ? 1 : secondsPhase(now))
                     Text(String(format: "%02d", reading.parts.minute ?? 0))
-                    Text(":").opacity(secondsPhase(now))
+                    Text(":").opacity(reduceMotion ? 1 : secondsPhase(now))
                     Text(String(format: "%02d", reading.parts.second ?? 0))
                 }
                 .font(.system(size: metrics.digit * 0.45, weight: .medium, design: .monospaced))
@@ -374,8 +383,8 @@ struct WallpaperAgeView: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .contentTransition(animated ? .numericText() : .identity)
-                .animation(animated ? .snappy : nil, value: text)
+                .contentTransition(!reduceMotion && animated ? .numericText() : .identity)
+                .animation(!reduceMotion && animated ? .snappy : nil, value: text)
                 // Keeps digits legible on bright wallpaper patches without
                 // looking like a hard outline.
                 .shadow(color: .black.opacity(0.22), radius: 2.5, x: 0, y: 1)

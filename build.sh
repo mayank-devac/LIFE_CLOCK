@@ -1,5 +1,115 @@
 #!/bin/bash
 # One local workflow: verify, build, install, register the widget, then launch.
+
+remove_staging_directory() {
+    local candidate="${1-}"
+    local parent="${2-}"
+    local relative resolved_parent resolved_candidate
+
+    if [ -z "$candidate" ]; then
+        printf 'Refusing empty staging directory.\n' >&2
+        return 1
+    fi
+    if [ -z "$parent" ] || [ "$candidate" = "/" ] || [ "$candidate" = "$parent" ]; then
+        printf 'Refusing unsafe staging directory: %s\n' "$candidate" >&2
+        return 1
+    fi
+    if [ "$parent" != "/" ]; then parent="${parent%/}"; fi
+    if [ -z "$parent" ]; then
+        printf 'Refusing unsafe staging parent.\n' >&2
+        return 1
+    fi
+    if [ "$parent" = "/" ]; then
+        case "$candidate" in
+            /*) relative="${candidate#/}" ;;
+            *) printf 'Refusing staging directory outside install parent: %s\n' "$candidate" >&2; return 1 ;;
+        esac
+    else
+        case "$candidate" in
+            "$parent"/*) relative="${candidate#"$parent"/}" ;;
+            *) printf 'Refusing staging directory outside install parent: %s\n' "$candidate" >&2; return 1 ;;
+        esac
+    fi
+    case "$relative" in
+        .LifeClock-install.*) ;;
+        *) printf 'Refusing unexpected staging directory: %s\n' "$candidate" >&2; return 1 ;;
+    esac
+    case "$relative" in
+        */*|"") printf 'Refusing nested staging path: %s\n' "$candidate" >&2; return 1 ;;
+    esac
+    if [ -L "$candidate" ]; then
+        printf 'Refusing symlink staging directory: %s\n' "$candidate" >&2
+        return 1
+    fi
+    if [ ! -e "$candidate" ]; then
+        return 0
+    fi
+    if [ ! -d "$candidate" ]; then
+        printf 'Refusing non-directory staging target: %s\n' "$candidate" >&2
+        return 1
+    fi
+    resolved_parent="$(cd -P -- "$parent" 2>/dev/null && pwd -P)" || {
+        printf 'Refusing staging directory with an invalid parent: %s\n' "$parent" >&2
+        return 1
+    }
+    resolved_candidate="$(cd -P -- "$candidate" 2>/dev/null && pwd -P)" || {
+        printf 'Refusing staging directory that cannot be resolved: %s\n' "$candidate" >&2
+        return 1
+    }
+    if [ "$(dirname "$resolved_candidate")" != "$resolved_parent" ] ||
+       [ "$(basename "$resolved_candidate")" != "$relative" ]; then
+        printf 'Refusing staging directory outside install parent: %s\n' "$candidate" >&2
+        return 1
+    fi
+    if ! /bin/rm -rf -- "$candidate"; then
+        printf 'Failed to clean staging directory: %s\n' "$candidate" >&2
+        return 1
+    fi
+}
+
+cleanup() {
+    result=$?
+    cleanup_failed=false
+    if [ "$replacing" = true ] && [ "$finished" = false ]; then
+        printf 'Installation failed; restoring the previous app.\n' >&2
+        if [ -d "$previous_app" ]; then
+            if [ -d "$installed_app" ]; then
+                mv "$installed_app" "$run_dir/failed-install.app" || true
+            fi
+            mv "$previous_app" "$installed_app" || true
+            /usr/bin/pluginkit -a "$installed_app/$widget_suffix" || true
+        elif [ "$installed_new" = true ] && [ -d "$installed_app" ]; then
+            mv "$installed_app" "$run_dir/failed-install.app" || true
+        fi
+    fi
+    if [ -n "${stage_dir-}" ] && ! remove_staging_directory "$stage_dir" "${install_parent-}"; then
+        cleanup_failed=true
+    fi
+    if [ "$result" -ne 0 ]; then
+        printf 'Stopped. Logs and any backup: %s\n' "$run_dir" >&2
+    fi
+    trap - EXIT
+    if [ "$result" -ne 0 ]; then
+        exit "$result"
+    fi
+    if [ "$cleanup_failed" = true ]; then
+        exit 1
+    fi
+}
+
+run_xcode() {
+    phase="$1"
+    shift
+    printf '%s…\n' "$phase"
+    if ! /usr/bin/xcodebuild -project "$project_dir/LifeClock.xcodeproj" \
+        -scheme LifeClock -configuration Debug -destination 'platform=macOS' \
+        -derivedDataPath "$derived_data" "$@" > "$run_dir/$phase.log" 2>&1; then
+        tail -n 60 "$run_dir/$phase.log" >&2
+        return 1
+    fi
+}
+
+main() {
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,38 +128,7 @@ installed_new=false
 finished=false
 
 mkdir -p "$run_dir"
-
-cleanup() {
-    result=$?
-    if [ "$replacing" = true ] && [ "$finished" = false ]; then
-        printf 'Installation failed; restoring the previous app.\n' >&2
-        if [ -d "$previous_app" ]; then
-            if [ -d "$installed_app" ]; then
-                mv "$installed_app" "$run_dir/failed-install.app" || true
-            fi
-            mv "$previous_app" "$installed_app" || true
-            /usr/bin/pluginkit -a "$installed_app/$widget_suffix" || true
-        elif [ "$installed_new" = true ] && [ -d "$installed_app" ]; then
-            mv "$installed_app" "$run_dir/failed-install.app" || true
-        fi
-    fi
-    if [ "$result" -ne 0 ]; then
-        printf 'Stopped. Logs and any backup: %s\n' "$run_dir" >&2
-    fi
-}
 trap cleanup EXIT
-
-run_xcode() {
-    phase="$1"
-    shift
-    printf '%s…\n' "$phase"
-    if ! /usr/bin/xcodebuild -project "$project_dir/LifeClock.xcodeproj" \
-        -scheme LifeClock -configuration Debug -destination 'platform=macOS' \
-        -derivedDataPath "$derived_data" "$@" > "$run_dir/$phase.log" 2>&1; then
-        tail -n 60 "$run_dir/$phase.log" >&2
-        return 1
-    fi
-}
 
 printf 'Checking Xcode and install target…\n'
 /usr/bin/xcode-select -p > "$run_dir/xcode-path.txt"
@@ -146,3 +225,8 @@ printf '\nOne-time desktop step: right-click desktop → Edit Widgets → Life C
 printf 'Then right-click the widget → Edit Widget → enter your birthday.\n'
 printf 'If an old widget still says “Open Life Clock”, remove it and add Life Clock again.\n'
 printf 'macOS provides no supported CLI to place or configure desktop widgets automatically.\n'
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
