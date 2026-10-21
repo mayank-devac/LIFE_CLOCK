@@ -590,12 +590,12 @@ private struct ResizeCornerHandle: NSViewRepresentable {
         override func mouseDragged(with event: NSEvent) {
             guard let startingFrame, let startingMouseLocation, let window else { return }
             let mouseLocation = NSEvent.mouseLocation
-            let width = max(minimumSize.width, startingFrame.width + mouseLocation.x - startingMouseLocation.x)
-            let height = max(minimumSize.height, startingFrame.height - mouseLocation.y + startingMouseLocation.y)
-            window.setFrame(NSRect(x: startingFrame.minX,
-                                   y: startingFrame.maxY - height,
-                                   width: width,
-                                   height: height), display: true)
+            guard let screen = window.screen ?? NSScreen.main ?? NSScreen.screens.first,
+                  let frame = CardFramePolicy.resize(startingFrame,
+                      by: CGSize(width: mouseLocation.x - startingMouseLocation.x,
+                                 height: startingMouseLocation.y - mouseLocation.y),
+                      in: screen.visibleFrame, minimumSize: minimumSize) else { return }
+            window.setFrame(frame, display: true)
         }
 
         override func mouseUp(with event: NSEvent) {

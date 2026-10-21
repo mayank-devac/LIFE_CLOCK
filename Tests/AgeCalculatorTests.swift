@@ -54,6 +54,102 @@ final class AgeCalculatorTests: XCTestCase {
         XCTAssertNil(PreferencesStore(defaults: defaults).preferences.birth)
     }
 
+    func testUnreadableSettingsRejectOrdinarySavesAndRecoverWithBackup() throws {
+        let suite = "LifeClockTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let original = Data("{unreadable".utf8)
+        defaults.set(original, forKey: "lifePreferences.v1")
+        let store = PreferencesStore(defaults: defaults)
+        let warning = try XCTUnwrap(store.readWarning)
+        var updated = store.preferences
+        updated.cardFormat = .totalSeconds
+        updated.cardEnabled = false
+        XCTAssertThrowsError(try store.save(updated))
+        updated.birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
+        XCTAssertThrowsError(try store.save(updated))
+        XCTAssertTrue(store.recoveryNeeded)
+        XCTAssertEqual(store.readWarning, warning)
+        XCTAssertEqual(defaults.data(forKey: "lifePreferences.v1"), original)
+        XCTAssertNil(defaults.object(forKey: "lifePreferences.recoveryBackup.v1"))
+
+        try store.replaceUnreadableSettings()
+        XCTAssertEqual(defaults.data(forKey: "lifePreferences.recoveryBackup.v1"), original)
+        XCTAssertFalse(store.recoveryNeeded)
+        XCTAssertNil(store.readWarning)
+        XCTAssertNil(store.preferences.birth)
+        XCTAssertEqual(PreferencesStore(defaults: defaults).preferences, LifePreferences())
+        try store.save(updated)
+        XCTAssertEqual(PreferencesStore(defaults: defaults).preferences, updated)
+        try store.replaceUnreadableSettings()
+        XCTAssertEqual(defaults.data(forKey: "lifePreferences.recoveryBackup.v1"), original)
+    }
+
+    func testRecoveryNeverOverwritesAnExistingBackup() throws {
+        let suite = "LifeClockTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let original = Data("broken".utf8)
+        let backup = Data("older backup".utf8)
+        defaults.set(original, forKey: "lifePreferences.v1")
+        defaults.set(backup, forKey: "lifePreferences.recoveryBackup.v1")
+        let store = PreferencesStore(defaults: defaults)
+        XCTAssertThrowsError(try store.replaceUnreadableSettings())
+        XCTAssertEqual(defaults.data(forKey: "lifePreferences.v1"), original)
+        XCTAssertEqual(defaults.data(forKey: "lifePreferences.recoveryBackup.v1"), backup)
+        XCTAssertTrue(store.recoveryNeeded)
+        XCTAssertNotNil(store.readWarning)
+    }
+
+    func testBirthdayEditingRequiresConfirmationThenSavesLiveEdits() throws {
+        let suite = "LifeClockTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PreferencesStore(defaults: defaults)
+        let draft = BirthDetails(year: 2000, month: 2, day: 10, hour: 12, minute: 30,
+                                 timeZoneID: "Asia/Kolkata")
+        let future = BirthDetails(year: 9999, month: 1, day: 1, timeZoneID: "UTC")
+
+        XCTAssertFalse(try store.saveBirthday(draft, action: .edit))
+        XCTAssertFalse(try store.saveBirthday(future, action: .edit))
+        XCTAssertNil(store.preferences.birth)
+        XCTAssertNil(defaults.object(forKey: "lifePreferences.v1"))
+
+        var displayOnly = store.preferences
+        displayOnly.cardFormat = .detailed
+        try store.save(displayOnly)
+        XCTAssertFalse(try store.saveBirthday(draft, action: .edit))
+        XCTAssertNil(PreferencesStore(defaults: defaults).preferences.birth)
+        XCTAssertThrowsError(try store.saveBirthday(future, action: .confirm))
+        XCTAssertNil(store.preferences.birth)
+
+        XCTAssertTrue(try store.saveBirthday(draft, action: .confirm))
+        XCTAssertEqual(PreferencesStore(defaults: defaults).preferences.birth, draft)
+        XCTAssertEqual(store.preferences.cardFormat, .detailed)
+
+        var edited = draft
+        edited.day = 11
+        XCTAssertTrue(try store.saveBirthday(edited, action: .edit))
+        XCTAssertEqual(PreferencesStore(defaults: defaults).preferences.birth, edited)
+        XCTAssertThrowsError(try store.saveBirthday(future, action: .edit))
+        XCTAssertEqual(store.preferences.birth, edited)
+        XCTAssertEqual(PreferencesStore(defaults: defaults).preferences.birth, edited)
+    }
+
+    func testBirthdayConfirmationCannotBypassRecovery() throws {
+        let suite = "LifeClockTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let original = Data("broken".utf8)
+        defaults.set(original, forKey: "lifePreferences.v1")
+        let store = PreferencesStore(defaults: defaults)
+        let draft = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
+        XCTAssertFalse(try store.saveBirthday(draft, action: .edit))
+        XCTAssertThrowsError(try store.saveBirthday(draft, action: .confirm))
+        XCTAssertEqual(defaults.data(forKey: "lifePreferences.v1"), original)
+        XCTAssertTrue(store.recoveryNeeded)
+    }
+
     func testExactBirthdayAndElapsedFractions() throws {
         let birth = BirthDetails(year: 2000, month: 10, day: 19, hour: 12, minute: 30, timeZoneID: "UTC")
         let birthday = date("2026-10-19T12:30:00Z")

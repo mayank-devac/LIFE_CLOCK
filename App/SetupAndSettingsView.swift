@@ -37,7 +37,11 @@ struct SetupAndSettingsView: View {
     @State private var layoutExpanded = true
     @State private var launchAtLogin = false
     @State private var needsLoginApproval = false
-    @State private var errorMessage: String?
+    @State private var birthdayError: String?
+    @State private var preferenceError: String?
+    @State private var loginError: String?
+    @State private var confirmRecovery = false
+    @State private var recoveryMessage: String?
     @State private var cityQuery = ""
     @State private var cityResults: [TimezoneMatch] = []
     @State private var cityError: String?
@@ -56,12 +60,11 @@ struct SetupAndSettingsView: View {
             let parts = Calendar(identifier: .gregorian).dateComponents([.hour, .minute], from: date)
             birth.hour = parts.hour
             birth.minute = parts.minute
-            applyBirthday()
+            saveBirthday(.edit)
         })
     }
 
-    // Everything lives straight in the store; there is no draft or Save button.
-    // Any control change persists immediately and the card reacts live.
+    // Display controls persist the saved preferences, never the birthday draft.
     private func preferenceBinding<T: Equatable>(_ keyPath: WritableKeyPath<LifePreferences, T>)
         -> Binding<T> {
         Binding(get: { store.preferences[keyPath: keyPath] },
@@ -86,26 +89,25 @@ struct SetupAndSettingsView: View {
                 })
     }
 
-    private func applyBirthday() {
-        var updated = store.preferences
-        updated.birth = birth
-        persisted(updated)
-    }
-
-    private func persisted(_ updated: LifePreferences) {
+    private func saveBirthday(_ action: PreferencesStore.BirthdayAction) {
         do {
-            try store.save(updated)
-            errorMessage = nil
+            guard try store.saveBirthday(birth, action: action) else { return }
+            birthdayError = nil
+            recoveryMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            let savedStatus = store.preferences.birth == nil
+                ? "No birthday has been saved yet."
+                : "The card still uses your last valid birthday."
+            birthdayError = "\(error.localizedDescription) \(savedStatus)"
         }
     }
 
     private func persist(_ updated: LifePreferences) {
         do {
             try store.save(updated)
+            preferenceError = nil
         } catch {
-            errorMessage = error.localizedDescription
+            preferenceError = error.localizedDescription
         }
     }
 
@@ -119,14 +121,26 @@ struct SetupAndSettingsView: View {
             }
             needsLoginApproval = service.status == .requiresApproval
             if needsLoginApproval {
-                errorMessage = "macOS needs your approval in Login Items before automatic launch can work."
+                loginError = "macOS needs your approval in Login Items before automatic launch can work."
             } else {
-                errorMessage = nil
+                loginError = nil
             }
             return true
         } catch {
-            errorMessage = "Launch at login could not be changed: \(error.localizedDescription)"
+            loginError = "Launch at login could not be changed: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    private func replaceUnreadableSettings() {
+        do {
+            try store.replaceUnreadableSettings()
+            birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: TimeZone.current.identifier)
+            birthdayError = nil
+            preferenceError = nil
+            recoveryMessage = "Desktop card settings were reset. The unreadable settings are backed up. Set your birthday to continue."
+        } catch {
+            recoveryMessage = error.localizedDescription
         }
     }
 
@@ -167,18 +181,22 @@ struct SetupAndSettingsView: View {
                             .labelsHidden()
                         }
                     }
-                    .onChange(of: birth.day) { _, _ in applyBirthday() }
-                    .onChange(of: birth.month) { _, _ in clampDay(); applyBirthday() }
-                    .onChange(of: birth.year) { _, _ in clampDay(); applyBirthday() }
+                    .onChange(of: birth.day) { _, _ in saveBirthday(.edit) }
+                    .onChange(of: birth.month) { _, _ in clampDay(); saveBirthday(.edit) }
+                    .onChange(of: birth.year) { _, _ in clampDay(); saveBirthday(.edit) }
                     Toggle("Add birth time", isOn: Binding(get: { birth.hasBirthTime }, set: { known in
                         birth.hour = known ? 0 : nil
                         birth.minute = known ? 0 : nil
-                        applyBirthday()
+                        saveBirthday(.edit)
                     }))
                     if birth.hasBirthTime {
                         DatePicker("Time", selection: birthTimeBinding, displayedComponents: .hourAndMinute)
                             .environment(\.calendar, Calendar(identifier: .gregorian))
                             .environment(\.timeZone, TimeZone.current)
+                    }
+                    if store.preferences.birth == nil && !store.recoveryNeeded {
+                        Button("Set birthday") { saveBirthday(.confirm) }
+                            .buttonStyle(.borderedProminent)
                     }
                 }
                 Section("Birth timezone") {
@@ -200,7 +218,7 @@ struct SetupAndSettingsView: View {
                         Button {
                             birth.timeZoneID = place.zone.identifier
                             cancelSearch()
-                            applyBirthday()
+                            saveBirthday(.edit)
                         } label: {
                             HStack {
                                 Text(place.label)
@@ -221,7 +239,7 @@ struct SetupAndSettingsView: View {
                         cancelSearch()
                         birth.timeZoneID = TimeZone.current.identifier
                         cityQuery = ""
-                        applyBirthday()
+                        saveBirthday(.edit)
                     }
                 }
                 Section("Desktop card") {
@@ -309,7 +327,7 @@ struct SetupAndSettingsView: View {
                                         updated.wallpaperOffsetY = 0
                                         updated.wallpaperSize = 1
                                         updated.wallpaperRoundness = 1.4
-                                        persisted(updated)
+                                        persist(updated)
                                     }
                                     Spacer()
                                     Text(String(format: "h %.2f · v %.2f · size %.2f · round %.2f",
@@ -340,14 +358,33 @@ struct SetupAndSettingsView: View {
             .formStyle(.grouped)
             if let warning = store.readWarning {
                 Text(warning).font(.caption).foregroundStyle(.orange)
+                Button("Replace unreadable settings…") { confirmRecovery = true }
             }
-            if let errorMessage {
-                Text(errorMessage).font(.caption).foregroundStyle(.red)
-                    .accessibilityLabel("Settings error: \(errorMessage)")
+            if let recoveryMessage {
+                Text(recoveryMessage).font(.caption)
+                    .accessibilityLabel("Settings recovery: \(recoveryMessage)")
+            }
+            if let birthdayError {
+                Text(birthdayError).font(.caption).foregroundStyle(.red)
+                    .accessibilityLabel("Birthday error: \(birthdayError)")
+            }
+            if let preferenceError {
+                Text(preferenceError).font(.caption).foregroundStyle(.red)
+                    .accessibilityLabel("Preference save error: \(preferenceError)")
+            }
+            if let loginError {
+                Text(loginError).font(.caption).foregroundStyle(.red)
+                    .accessibilityLabel("Login error: \(loginError)")
             }
         }
         .padding(20)
         .frame(width: Self.size.width, height: Self.size.height)
+        .alert("Replace unreadable settings?", isPresented: $confirmRecovery) {
+            Button("Cancel", role: .cancel) { }
+            Button("Replace settings", role: .destructive, action: replaceUnreadableSettings)
+        } message: {
+            Text("This resets your desktop card settings and birthday. The unreadable settings are backed up first. Widget settings and Open at login are unchanged.")
+        }
         .onAppear(perform: load)
         .onDisappear(perform: cancelSearch)
     }

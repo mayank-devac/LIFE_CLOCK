@@ -143,10 +143,10 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
         if wallpaperActive { refreshWallpaperFrame(); return }
         guard !NSScreen.screens.contains(where: { $0.visibleFrame.contains(panel.frame) }),
               let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
-        let area = screen.visibleFrame
-        let origin = NSPoint(x: max(area.minX, min(panel.frame.minX, area.maxX - panel.frame.width)),
-                             y: max(area.minY, min(panel.frame.minY, area.maxY - panel.frame.height)))
-        panel.setFrameOrigin(origin)
+        guard let frame = CardFramePolicy.fit(panel.frame, to: screen.visibleFrame,
+                                               minimumSize: panel.minSize) else { return }
+        panel.setFrame(frame, display: true)
+        panel.saveFrame(usingName: "LifeClockCard")
     }
 
     // Wallpaper mode covers the whole screen frame — the full wallpaper area,

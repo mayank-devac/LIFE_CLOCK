@@ -21,6 +21,9 @@
 		A60B06CC76512F4ADE29CB12 /* AgeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F327CC2005F1FCDA9BA56781 /* AgeCalculator.swift */; };
 		B584AAA386F6FE761A4CF7DC /* AgeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F327CC2005F1FCDA9BA56781 /* AgeCalculator.swift */; };
 		F4BCB9661C1B0FD49A592CF2 /* PreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A7618D5726A726D32EB43A /* PreferencesStore.swift */; };
+		000000000000000000000192 /* CardFramePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000191 /* CardFramePolicy.swift */; };
+		000000000000000000000193 /* CardFramePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000191 /* CardFramePolicy.swift */; };
+		00000000000000000000019C /* CardFramePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019B /* CardFramePolicyTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,6 +69,8 @@
 		F327CC2005F1FCDA9BA56781 /* AgeCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgeCalculator.swift; sourceTree = "<group>"; };
 		F78A71AF8BBF8CC2F6F31354 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		FB9D41379ED57FFAD535CC36 /* LifeClock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LifeClock.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000191 /* CardFramePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardFramePolicy.swift; sourceTree = "<group>"; };
+		00000000000000000000019B /* CardFramePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardFramePolicyTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,6 +101,7 @@
 		156052F04525D0F710673CF0 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				00000000000000000000019B /* CardFramePolicyTests.swift */,
 				7865E0E4B2A20BD43A087224 /* AgeCalculatorTests.swift */,
 				6B8491806A065122C9A3AE64 /* BirthdayPolicyTests.swift */,
 			);
@@ -119,6 +125,7 @@
 		44C7E229889FE9D1BB841A79 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000191 /* CardFramePolicy.swift */,
 				F327CC2005F1FCDA9BA56781 /* AgeCalculator.swift */,
 				C9A7618D5726A726D32EB43A /* PreferencesStore.swift */,
 			);
@@ -280,6 +287,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				000000000000000000000192 /* CardFramePolicy.swift in Sources */,
 				2AC0CB81E429784D627794A5 /* LifeClockApp.swift in Sources */,
 				9662B02819043712BE10D78B /* SetupAndSettingsView.swift in Sources */,
 				0926CCD0844C575CF25B65F2 /* AgeCardView.swift in Sources */,
@@ -294,6 +302,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00000000000000000000019C /* CardFramePolicyTests.swift in Sources */,
+				000000000000000000000193 /* CardFramePolicy.swift in Sources */,
 				94A90F18993C811B5726D470 /* AgeCalculatorTests.swift in Sources */,
 				596EC73D9134F1440CCADB8C /* BirthdayPolicyTests.swift in Sources */,
 				B584AAA386F6FE761A4CF7DC /* AgeCalculator.swift in Sources */,

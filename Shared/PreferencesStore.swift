@@ -97,7 +97,10 @@ struct LifePreferences: Codable, Equatable {
 
 final class PreferencesStore: ObservableObject {
     private static let preferencesKey = "lifePreferences.v1"
+    private static let recoveryBackupKey = "lifePreferences.recoveryBackup.v1"
     private let defaults: UserDefaults
+    private var unreadableData: Data?
+    var recoveryNeeded: Bool { unreadableData != nil }
     @Published private(set) var preferences: LifePreferences
     @Published private(set) var readWarning: String?
 
@@ -108,7 +111,8 @@ final class PreferencesStore: ObservableObject {
                 preferences = try JSONDecoder().decode(LifePreferences.self, from: data)
             } catch {
                 preferences = LifePreferences()
-                readWarning = "Saved settings could not be read. Save your birthday again to replace them."
+                unreadableData = data
+                readWarning = "Saved settings could not be read. Replace them explicitly to set up the desktop card again."
             }
         } else {
             preferences = LifePreferences()
@@ -118,6 +122,7 @@ final class PreferencesStore: ObservableObject {
     // Nil birth is a valid unconfigured state (fresh install). A present birth
     // must be a real past date; the picker nudges the user until it validates.
     func save(_ updated: LifePreferences) throws {
+        guard !recoveryNeeded else { throw SettingsError.recoveryRequired }
         if let birth = updated.birth {
             guard let date = birth.date, date <= Date() else {
                 throw SettingsError.invalidBirthday
@@ -129,15 +134,55 @@ final class PreferencesStore: ObservableObject {
         readWarning = nil
     }
 
+    enum BirthdayAction {
+        case edit, confirm
+    }
+
+    /// Draft edits do not configure a new card; confirmation does.
+    @discardableResult
+    func saveBirthday(_ birth: BirthDetails, action: BirthdayAction) throws -> Bool {
+        if action == .edit && preferences.birth == nil { return false }
+        var updated = preferences
+        updated.birth = birth
+        try save(updated)
+        return true
+    }
+
+    func replaceUnreadableSettings() throws {
+        guard let unreadableData else { return }
+        guard defaults.object(forKey: Self.recoveryBackupKey) == nil else {
+            throw SettingsError.recoveryBackupExists
+        }
+        let reset = LifePreferences()
+        let data = try JSONEncoder().encode(reset)
+        defaults.set(unreadableData, forKey: Self.recoveryBackupKey)
+        guard defaults.data(forKey: Self.recoveryBackupKey) == unreadableData else {
+            throw SettingsError.recoveryBackupFailed
+        }
+        defaults.set(data, forKey: Self.preferencesKey)
+        self.unreadableData = nil
+        preferences = reset
+        readWarning = nil
+    }
+
     var lastCelebratedDay: String? {
         get { defaults.string(forKey: "lastCelebratedDay") }
         set { defaults.set(newValue, forKey: "lastCelebratedDay") }
     }
 
     enum SettingsError: LocalizedError {
-        case invalidBirthday
+        case invalidBirthday, recoveryRequired, recoveryBackupExists, recoveryBackupFailed
         var errorDescription: String? {
-            "Choose a valid birthday that is not in the future. A birth time must exist in the selected timezone."
+            switch self {
+            case .invalidBirthday:
+                return "Choose a valid birthday that is not in the future. A birth time must exist in the selected timezone."
+            case .recoveryRequired:
+                return "Your unreadable settings are protected. Use Replace unreadable settings before saving changes."
+            case .recoveryBackupExists:
+                return "A recovery backup already exists. Nothing was replaced, so both copies remain protected."
+            case .recoveryBackupFailed:
+                return "The recovery backup could not be saved. Your original settings have not been replaced."
+            }
         }
     }
 }
