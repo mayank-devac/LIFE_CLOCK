@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import SwiftUI
 
 private final class DesktopPanel: NSPanel {
@@ -26,6 +27,18 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
         panel = DesktopPanel(contentRect: NSRect(origin: .zero, size: cardSize),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
+        // Upgrade older selections while their numeric ID still resolves.
+        // If it no longer resolves, retain it until the user chooses a screen.
+        if store.preferences.wallpaperDisplayUUID == nil,
+           let screen = NSScreen.screens.first(where: {
+               store.preferences.matchesWallpaperDisplay(id: $0.lifeClockDisplayID ?? 0,
+                                                          uuid: $0.lifeClockDisplayUUID)
+           }), let uuid = screen.lifeClockDisplayUUID {
+            var updated = store.preferences
+            updated.wallpaperDisplayUUID = uuid
+            do { try store.save(updated) }
+            catch { NSLog("Life Clock could not upgrade the saved display: %@", error.localizedDescription) }
+        }
         panel.delegate = self
         panel.title = "Life Clock"
         panel.isOpaque = false
@@ -167,14 +180,12 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     }
 
     private func wallpaperScreen() -> NSScreen? {
-        let chosen = store.preferences.wallpaperDisplay
-        if chosen != 0,
-           let match = NSScreen.screens.first(where: {
-               ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? Int) == chosen
-           }) {
-            return match
+        let screens = NSScreen.screens
+        let identities = screens.map { (id: $0.lifeClockDisplayID ?? 0, uuid: $0.lifeClockDisplayUUID) }
+        if let index = store.preferences.wallpaperDisplayIndex(in: identities) {
+            return screens[index]
         }
-        return NSScreen.screens.first
+        return screens.first
     }
 
     private func updateActivity() {

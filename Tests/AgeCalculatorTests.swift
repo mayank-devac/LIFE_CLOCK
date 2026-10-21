@@ -2,6 +2,52 @@ import XCTest
 import SwiftUI
 
 final class AgeCalculatorTests: XCTestCase {
+    func testWallpaperDisplaySurvivesChangedNumericIDAndSettingsReload() throws {
+        let suite = "LifeClockTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PreferencesStore(defaults: defaults)
+        var saved = store.preferences
+        saved.wallpaperDisplay = 42
+        saved.wallpaperDisplayUUID = "external-monitor"
+        try store.save(saved)
+
+        let restored = PreferencesStore(defaults: defaults).preferences
+        XCTAssertTrue(restored.matchesWallpaperDisplay(id: 99, uuid: "external-monitor"))
+        XCTAssertFalse(restored.matchesWallpaperDisplay(id: 42, uuid: "other-monitor"))
+        XCTAssertTrue(restored.matchesWallpaperDisplay(id: 42, uuid: nil))
+        // No match while disconnected must not erase the remembered monitor.
+        XCTAssertEqual(restored.wallpaperDisplayUUID, "external-monitor")
+
+        let legacy = try JSONDecoder().decode(LifePreferences.self,
+            from: Data("{\"wallpaperDisplay\":42}".utf8))
+        XCTAssertTrue(legacy.matchesWallpaperDisplay(id: 42, uuid: "external-monitor"))
+        XCTAssertNil(legacy.wallpaperDisplayUUID)
+        let primary = LifePreferences()
+        XCTAssertFalse(primary.matchesWallpaperDisplay(id: 42, uuid: "external-monitor"))
+    }
+
+    func testWallpaperDisplayUsesNumericFallbackOnlyWhenUUIDIsUnavailable() {
+        let saved = LifePreferences(wallpaperDisplay: 42, wallpaperDisplayUUID: "external-monitor")
+        XCTAssertEqual(saved.wallpaperDisplayIndex(in: [(id: 42, uuid: nil)]), 0)
+        XCTAssertNil(saved.wallpaperDisplayIndex(in: [(id: 42, uuid: "other-monitor")]))
+        XCTAssertEqual(saved.wallpaperDisplayIndex(in: [
+            (id: 42, uuid: nil), (id: 99, uuid: "external-monitor")
+        ]), 1)
+        XCTAssertEqual(LifePreferences.displaySelectionID(id: 42, uuid: nil), "display-id:42")
+    }
+
+    func testDisconnectedLegacyWallpaperSelectionStaysDistinctFromPrimary() {
+        let saved = LifePreferences(wallpaperDisplay: 42)
+        let connected = [(id: 7, uuid: Optional("primary-monitor"))]
+        XCTAssertNil(saved.wallpaperDisplayIndex(in: connected))
+        // This tag keeps the picker's disconnected placeholder selected.
+        XCTAssertEqual(saved.wallpaperDisplaySelectionID, "display-id:42")
+        XCTAssertNotEqual(saved.wallpaperDisplaySelectionID, LifePreferences().wallpaperDisplaySelectionID)
+        XCTAssertEqual(saved.wallpaperDisplayIndex(in: [(id: 42, uuid: "external-monitor")]), 0)
+        XCTAssertEqual(saved.wallpaperDisplay, 42)
+    }
+
     func testDisplayCardTargetAgePersistsAndOlderSettingsDefaultTo80() throws {
         let legacy = try JSONDecoder().decode(LifePreferences.self, from: Data("{}".utf8))
         XCTAssertEqual(legacy.targetAge, 80)

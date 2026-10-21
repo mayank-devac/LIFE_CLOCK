@@ -10,7 +10,8 @@ struct LifePreferences: Codable, Equatable {
     var alwaysOnTop = false
     var wallpaperMode = true
     var wallpaperGlass = false
-    var wallpaperDisplay = 0
+    var wallpaperDisplay = 0 // Legacy selection and fallback when UUID lookup fails.
+    var wallpaperDisplayUUID: String?
     var wallpaperCustomLayout = false
     var wallpaperOffsetX = 0.0     // -1 (left) … 1 (right), half-screen shift
     var wallpaperOffsetY = 0.0     // -1 (down) … 1 (up), half-screen shift
@@ -26,6 +27,7 @@ struct LifePreferences: Codable, Equatable {
          wallpaperMode: Bool = true,
          wallpaperGlass: Bool = false,
          wallpaperDisplay: Int = 0,
+         wallpaperDisplayUUID: String? = nil,
          wallpaperCustomLayout: Bool = false,
          wallpaperOffsetX: Double = 0,
          wallpaperOffsetY: Double = 0,
@@ -42,6 +44,7 @@ struct LifePreferences: Codable, Equatable {
         self.wallpaperMode = wallpaperMode
         self.wallpaperGlass = wallpaperGlass
         self.wallpaperDisplay = wallpaperDisplay
+        self.wallpaperDisplayUUID = wallpaperDisplayUUID
         self.wallpaperCustomLayout = wallpaperCustomLayout
         self.wallpaperOffsetX = wallpaperOffsetX
         self.wallpaperOffsetY = wallpaperOffsetY
@@ -53,7 +56,7 @@ struct LifePreferences: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case birth, cardFormat, targetAge, subsecondUnits, cardEnabled, alwaysOnTop
-        case wallpaperMode, wallpaperGlass, wallpaperDisplay
+        case wallpaperMode, wallpaperGlass, wallpaperDisplay, wallpaperDisplayUUID
         case wallpaperCustomLayout, wallpaperOffsetX, wallpaperOffsetY, wallpaperSize, wallpaperRoundness
         case wallpaperGlassFullScreen
         case wallpaperGlassStrength
@@ -88,6 +91,7 @@ struct LifePreferences: Codable, Equatable {
         wallpaperMode = try values.decodeIfPresent(Bool.self, forKey: .wallpaperMode) ?? true
         wallpaperGlass = try values.decodeIfPresent(Bool.self, forKey: .wallpaperGlass) ?? false
         wallpaperDisplay = try values.decodeIfPresent(Int.self, forKey: .wallpaperDisplay) ?? 0
+        wallpaperDisplayUUID = try values.decodeIfPresent(String.self, forKey: .wallpaperDisplayUUID)
         wallpaperCustomLayout = try values.decodeIfPresent(Bool.self, forKey: .wallpaperCustomLayout) ?? false
         wallpaperOffsetX = try values.decodeIfPresent(Double.self, forKey: .wallpaperOffsetX) ?? 0
         wallpaperOffsetY = try values.decodeIfPresent(Double.self, forKey: .wallpaperOffsetY) ?? 0
@@ -95,6 +99,26 @@ struct LifePreferences: Codable, Equatable {
         wallpaperRoundness = try values.decodeIfPresent(Double.self, forKey: .wallpaperRoundness) ?? 1.4
         wallpaperGlassFullScreen = try values.decodeIfPresent(Bool.self, forKey: .wallpaperGlassFullScreen) ?? false
         wallpaperGlassStrength = try values.decodeIfPresent(Double.self, forKey: .wallpaperGlassStrength) ?? 0.4
+    }
+    func matchesWallpaperDisplay(id: Int, uuid: String?) -> Bool {
+        // A known UUID wins; use the numeric ID only when a UUID is unavailable.
+        if let saved = wallpaperDisplayUUID, let uuid { return saved == uuid }
+        return wallpaperDisplay != 0 && wallpaperDisplay == id
+    }
+
+    func wallpaperDisplayIndex(in displays: [(id: Int, uuid: String?)]) -> Int? {
+        // An exact UUID match takes priority over every numeric fallback.
+        if let saved = wallpaperDisplayUUID,
+           let index = displays.firstIndex(where: { $0.uuid == saved }) { return index }
+        return displays.firstIndex { matchesWallpaperDisplay(id: $0.id, uuid: $0.uuid) }
+    }
+
+    static func displaySelectionID(id: Int, uuid: String?) -> String {
+        uuid ?? (id == 0 ? "" : "display-id:\(id)")
+    }
+
+    var wallpaperDisplaySelectionID: String {
+        Self.displaySelectionID(id: wallpaperDisplay, uuid: wallpaperDisplayUUID)
     }
 }
 

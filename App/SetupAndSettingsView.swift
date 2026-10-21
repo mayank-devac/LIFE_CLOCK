@@ -2,6 +2,20 @@ import CoreLocation
 import ServiceManagement
 import SwiftUI
 import AppKit
+import ColorSync
+import CoreGraphics
+
+extension NSScreen {
+    var lifeClockDisplayID: Int? {
+        deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? Int
+    }
+
+    var lifeClockDisplayUUID: String? {
+        guard let id = lifeClockDisplayID,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(CGDirectDisplayID(id))?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+}
 
 struct TimezoneMatch: Identifiable {
     var id: String { zone.identifier + label }
@@ -10,18 +24,27 @@ struct TimezoneMatch: Identifiable {
 }
 
 struct ScreenChoice: Identifiable {
-    let id: Int          // CGDirectDisplayID; 0 follows the primary display
+    let id: String       // UUID or numeric fallback; empty follows the primary display
+    let displayID: Int
+    let uuid: String?
     let name: String
 }
 
 extension ScreenChoice {
-    static func current() -> [ScreenChoice] {
+    static func current(preferences: LifePreferences = LifePreferences()) -> [ScreenChoice] {
         var choices: [ScreenChoice] = []
         for (index, screen) in NSScreen.screens.enumerated() {
-            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? Int else { continue }
             let name = screen.localizedName.isEmpty ? "Display \(index + 1)" : screen.localizedName
-            choices.append(ScreenChoice(id: index == 0 ? 0 : number,
-                                        name: index == 0 ? "\(name) (Primary)" : name))
+            if index == 0 {
+                choices.append(ScreenChoice(id: "", displayID: 0, uuid: nil, name: "\(name) (Primary)"))
+            }
+            guard let number = screen.lifeClockDisplayID else { continue }
+            let uuid = screen.lifeClockDisplayUUID
+            // A saved physical display stays distinct from following the primary display.
+            if index != 0 || preferences.matchesWallpaperDisplay(id: number, uuid: uuid) {
+                choices.append(ScreenChoice(id: LifePreferences.displaySelectionID(id: number, uuid: uuid),
+                                            displayID: number, uuid: uuid, name: name))
+            }
         }
         return choices
     }
@@ -37,6 +60,7 @@ struct SetupAndSettingsView: View {
                                            timeZoneID: TimeZone.current.identifier)
     @State private var layoutExpanded = false
     @State private var screenChoices = ScreenChoice.current()
+    @State private var connectedScreenCount = NSScreen.screens.count
     @State private var launchAtLogin = false
     @State private var needsLoginApproval = false
     @State private var birthdayError: String?
@@ -323,14 +347,25 @@ struct SetupAndSettingsView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        Picker("Screen", selection: Binding(
-                            get: {
-                                let saved = store.preferences.wallpaperDisplay
-                                return screenChoices.contains(where: { $0.id == saved }) ? saved : 0
-                            },
-                            set: { preferenceBinding(\.wallpaperDisplay).wrappedValue = $0 })) {
-                            ForEach(screenChoices) { choice in
-                                Text(choice.name).tag(choice.id)
+                        if connectedScreenCount > 1 {
+                            Picker("Screen", selection: Binding(
+                                get: {
+                                    selectedScreenID
+                                },
+                                set: { id in
+                                    // The disconnected placeholder represents the existing selection.
+                                    guard let choice = screenChoices.first(where: { $0.id == id }) else { return }
+                                    var updated = store.preferences
+                                    updated.wallpaperDisplayUUID = choice.uuid
+                                    updated.wallpaperDisplay = choice.displayID
+                                    persist(updated)
+                                })) {
+                                ForEach(screenChoices) { choice in
+                                    Text(choice.name).tag(choice.id)
+                                }
+                                if !selectedScreenID.isEmpty && !screenChoices.contains(where: { $0.id == selectedScreenID }) {
+                                    Text("Saved display (disconnected)").tag(selectedScreenID)
+                                }
                             }
                         }
                         HStack {
@@ -426,16 +461,26 @@ struct SetupAndSettingsView: View {
             Text("This resets your desktop card settings and birthday. The unreadable settings are backed up first. Widget settings and Open at login are unchanged.")
         }
         .onAppear {
-            screenChoices = ScreenChoice.current()
+            connectedScreenCount = NSScreen.screens.count
+            screenChoices = ScreenChoice.current(preferences: store.preferences)
             load()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
-            screenChoices = ScreenChoice.current()
+            connectedScreenCount = NSScreen.screens.count
+            screenChoices = ScreenChoice.current(preferences: store.preferences)
         }
         .onDisappear(perform: cancelSearch)
     }
 
     private var currentYear: Int { birth.calendar.component(.year, from: Date()) }
+
+    private var selectedScreenID: String {
+        let identities = screenChoices.map { (id: $0.displayID, uuid: $0.uuid) }
+        if let index = store.preferences.wallpaperDisplayIndex(in: identities) {
+            return screenChoices[index].id
+        }
+        return store.preferences.wallpaperDisplaySelectionID
+    }
 
     private var daysInSelectedMonth: Int {
         let first = birth.calendar.date(from: DateComponents(year: birth.year, month: birth.month, day: 1))!
