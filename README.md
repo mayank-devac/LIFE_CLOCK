@@ -48,13 +48,13 @@ These instructions build the app on your Mac. The repository does not include a 
 
 ### 2. Download the source
 
-On the [GitHub repository](https://github.com/BlueKeys-dev/LIFE_CLOCK_MAC_WIDGET), choose **Code → Download ZIP**, then unzip it.
+On the [GitHub repository](https://github.com/mayank-devac/LIFE_CLOCK), choose **Code → Download ZIP**, then unzip it.
 
 Or use Terminal:
 
 ```sh
-git clone https://github.com/BlueKeys-dev/LIFE_CLOCK_MAC_WIDGET.git
-cd LIFE_CLOCK_MAC_WIDGET
+git clone https://github.com/mayank-devac/LIFE_CLOCK.git
+cd LIFE_CLOCK
 ```
 
 If you downloaded the ZIP, open Terminal, type `cd `, drag the extracted folder into Terminal, and press Return.
