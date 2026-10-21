@@ -26,7 +26,7 @@ Built with Swift, SwiftUI and WidgetKit. No third-party packages, account or pai
 
 ```mermaid
 flowchart LR
-    A[Download source] --> B[Build and install]
+    A[Download app ZIP] --> B[Move app to Applications]
     B --> C[Open Life Clock]
     C --> D[Set birthday in app]
     D --> E[Desktop card or wallpaper]
@@ -38,15 +38,30 @@ flowchart LR
 
 ## Get started
 
-### 1. Check what you need
+### Download the app — no Xcode needed
+
+Requires **macOS 14 or later**. The download supports **Apple Silicon and Intel Macs**.
+
+1. Open the [latest release](https://github.com/mayank-devac/LIFE_CLOCK/releases/latest).
+2. Under **Assets**, download **LifeClock-v1.0.0-macOS-universal.zip**. The “Source code” archives are for developers.
+3. Double-click the ZIP, then drag **LifeClock.app** into **Applications**.
+4. Open Life Clock, set your birthday, and choose your clock. To add a widget, follow [Add a widget](#add-a-widget).
+
+**First launch:** this app is ad-hoc signed, not signed with an Apple Developer ID or notarised by Apple. macOS may block it. If you trust this download, try opening it once, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. See [Apple's instructions](https://support.apple.com/en-us/102445). You do not need to disable Gatekeeper. If macOS reports malware or damage, stop and report the exact message instead of bypassing it.
+
+To update, quit Life Clock and replace the app in Applications with the newer copy. Settings are stored separately. There is no automatic updater.
+
+### Build from source (optional)
+
+#### 1. Check what you need
 
 - **macOS 14 or later** to run the app. Live widget calendar updates need **macOS 15 or later**.
 - **Xcode 26 or later** to build this source, including its macOS 26 glass APIs. Your build Mac must support that version of Xcode.
 - The full Xcode app; Command Line Tools alone are not enough. Open Xcode once and finish its first-launch setup. In **Xcode → Settings → Locations**, select Xcode under **Command Line Tools**.
 
-These instructions build the app on your Mac. The repository does not include a ready-to-install, notarised app or automatic updater.
+The following steps are only needed if you want to build the app yourself.
 
-### 2. Download the source
+#### 2. Download the source
 
 On the [GitHub repository](https://github.com/mayank-devac/LIFE_CLOCK), choose **Code → Download ZIP**, then unzip it.
 
@@ -59,7 +74,7 @@ cd LIFE_CLOCK
 
 If you downloaded the ZIP, open Terminal, type `cd `, drag the extracted folder into Terminal, and press Return.
 
-### 3. Build and install
+#### 3. Build and install
 
 Run this from the project folder:
 
