@@ -241,9 +241,9 @@ struct AgeSnapshot {
     }
     var accessibleDescription: String { clock.accessibleDescription }
 
-    func reading(for format: DesktopCardFormat, birth: BirthDetails, now: Date) -> ClockReading? {
+    func reading(for format: DesktopCardFormat, birth: BirthDetails, now: Date, targetAge: Int = 80) -> ClockReading? {
         format == .countdown
-            ? AgeCalculator.remaining(birth: birth, now: now, lifespanYears: 80)
+            ? AgeCalculator.remaining(birth: birth, now: now, lifespanYears: targetAge)
             : clock
     }
 }

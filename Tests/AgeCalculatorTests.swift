@@ -2,6 +2,44 @@ import XCTest
 import SwiftUI
 
 final class AgeCalculatorTests: XCTestCase {
+    func testDisplayCardTargetAgePersistsAndOlderSettingsDefaultTo80() throws {
+        let legacy = try JSONDecoder().decode(LifePreferences.self, from: Data("{}".utf8))
+        XCTAssertEqual(legacy.targetAge, 80)
+        XCTAssertEqual(LifePreferences().targetAge, 80)
+        let suite = "LifeClockTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PreferencesStore(defaults: defaults)
+        for target in [60, 80, 90] {
+            var updated = store.preferences
+            updated.targetAge = target
+            try store.save(updated)
+            XCTAssertEqual(PreferencesStore(defaults: defaults).preferences.targetAge, target)
+        }
+        for target in [0, 151] {
+            var invalid = store.preferences
+            invalid.targetAge = target
+            XCTAssertThrowsError(try store.save(invalid))
+            XCTAssertEqual(PreferencesStore(defaults: defaults).preferences.targetAge, 90)
+        }
+    }
+
+    func testDisplayCardCountdownUsesChosenTargetAgeAndStopsAtZero() throws {
+        let birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
+        let now = date("2026-01-01T00:00:00Z")
+        let age = try XCTUnwrap(AgeCalculator.snapshot(birth: birth, now: now))
+        for target in [60, 80, 90] {
+            let reading = try XCTUnwrap(age.reading(for: .countdown, birth: birth, now: now, targetAge: target))
+            XCTAssertEqual(reading.parts.year, target - 26)
+        }
+        let stopped = try XCTUnwrap(age.reading(for: .countdown, birth: birth, now: now, targetAge: 20))
+        XCTAssertEqual(stopped.totalSeconds, 0)
+        XCTAssertEqual(stopped.parts.year, 0)
+        let liveAge = try XCTUnwrap(age.reading(for: .liveAge, birth: birth, now: now, targetAge: 60))
+        XCTAssertEqual(liveAge.totalSeconds, age.clock.totalSeconds)
+        XCTAssertEqual(liveAge.accessibleDescription, age.clock.accessibleDescription)
+    }
+
     func testWidgetClockModeResolvesSavedDropdownAndLegacySelections() {
         XCTAssertEqual(WidgetClockMode(selection: "Years remaining"), .remaining)
         XCTAssertEqual(WidgetClockMode(selection: "remaining"), .remaining)

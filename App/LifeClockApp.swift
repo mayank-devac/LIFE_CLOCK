@@ -71,8 +71,12 @@ final class LifeClockDelegate: NSObject, NSApplicationDelegate {
                 // Keep the settings window open until the user chooses Close.
             }
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: SetupAndSettingsView.size),
-                                  styleMask: [.titled, .closable], backing: .buffered, defer: false)
+                                  styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             window.title = "Life Clock"
+            window.contentMinSize = NSSize(width: SetupAndSettingsView.size.width,
+                                          height: min(600, SetupAndSettingsView.size.height))
+            window.contentMaxSize = NSSize(width: SetupAndSettingsView.size.width,
+                                          height: .greatestFiniteMagnitude)
             window.contentView = NSHostingView(rootView: view)
             window.isReleasedWhenClosed = false
             window.center()

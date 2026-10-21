@@ -4,11 +4,12 @@ import Foundation
 struct LifePreferences: Codable, Equatable {
     var birth: BirthDetails?
     var cardFormat: DesktopCardFormat = .liveAge
+    var targetAge = 80
     var subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds]
     var cardEnabled = true
     var alwaysOnTop = false
-    var wallpaperMode = false
-    var wallpaperGlass = true
+    var wallpaperMode = true
+    var wallpaperGlass = false
     var wallpaperDisplay = 0
     var wallpaperCustomLayout = false
     var wallpaperOffsetX = 0.0     // -1 (left) … 1 (right), half-screen shift
@@ -18,12 +19,12 @@ struct LifePreferences: Codable, Equatable {
     var wallpaperGlassFullScreen = false // glass spans the screen instead of the digits pane
     var wallpaperGlassStrength = 0.4    // 0 = nearly clear, 1 = most veiled
 
-    init(birth: BirthDetails? = nil, cardFormat: DesktopCardFormat = .liveAge,
+    init(birth: BirthDetails? = nil, cardFormat: DesktopCardFormat = .liveAge, targetAge: Int = 80,
          subsecondUnits: Set<SubsecondUnit> = [.milliseconds, .microseconds, .picoseconds],
          cardEnabled: Bool = true,
          alwaysOnTop: Bool = false,
-         wallpaperMode: Bool = false,
-         wallpaperGlass: Bool = true,
+         wallpaperMode: Bool = true,
+         wallpaperGlass: Bool = false,
          wallpaperDisplay: Int = 0,
          wallpaperCustomLayout: Bool = false,
          wallpaperOffsetX: Double = 0,
@@ -34,6 +35,7 @@ struct LifePreferences: Codable, Equatable {
          wallpaperGlassStrength: Double = 0.4) {
         self.birth = birth
         self.cardFormat = cardFormat
+        self.targetAge = targetAge
         self.subsecondUnits = subsecondUnits
         self.cardEnabled = cardEnabled
         self.alwaysOnTop = alwaysOnTop
@@ -50,7 +52,7 @@ struct LifePreferences: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case birth, cardFormat, subsecondUnits, cardEnabled, alwaysOnTop
+        case birth, cardFormat, targetAge, subsecondUnits, cardEnabled, alwaysOnTop
         case wallpaperMode, wallpaperGlass, wallpaperDisplay
         case wallpaperCustomLayout, wallpaperOffsetX, wallpaperOffsetY, wallpaperSize, wallpaperRoundness
         case wallpaperGlassFullScreen
@@ -70,6 +72,7 @@ struct LifePreferences: Codable, Equatable {
         let legacyValues = try decoder.container(keyedBy: LegacyCodingKeys.self)
         birth = try values.decodeIfPresent(BirthDetails.self, forKey: .birth)
         cardFormat = try values.decodeIfPresent(DesktopCardFormat.self, forKey: .cardFormat) ?? .liveAge
+        targetAge = min(150, max(1, try values.decodeIfPresent(Int.self, forKey: .targetAge) ?? 80))
         if let units = try values.decodeIfPresent(Set<SubsecondUnit>.self, forKey: .subsecondUnits) {
             subsecondUnits = units
         } else {
@@ -82,8 +85,8 @@ struct LifePreferences: Codable, Equatable {
         }
         cardEnabled = try values.decodeIfPresent(Bool.self, forKey: .cardEnabled) ?? true
         alwaysOnTop = try values.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
-        wallpaperMode = try values.decodeIfPresent(Bool.self, forKey: .wallpaperMode) ?? false
-        wallpaperGlass = try values.decodeIfPresent(Bool.self, forKey: .wallpaperGlass) ?? true
+        wallpaperMode = try values.decodeIfPresent(Bool.self, forKey: .wallpaperMode) ?? true
+        wallpaperGlass = try values.decodeIfPresent(Bool.self, forKey: .wallpaperGlass) ?? false
         wallpaperDisplay = try values.decodeIfPresent(Int.self, forKey: .wallpaperDisplay) ?? 0
         wallpaperCustomLayout = try values.decodeIfPresent(Bool.self, forKey: .wallpaperCustomLayout) ?? false
         wallpaperOffsetX = try values.decodeIfPresent(Double.self, forKey: .wallpaperOffsetX) ?? 0
@@ -123,6 +126,7 @@ final class PreferencesStore: ObservableObject {
     // must be a real past date; the picker nudges the user until it validates.
     func save(_ updated: LifePreferences) throws {
         guard !recoveryNeeded else { throw SettingsError.recoveryRequired }
+        guard (1...150).contains(updated.targetAge) else { throw SettingsError.invalidTargetAge }
         if let birth = updated.birth {
             guard let date = birth.date, date <= Date() else {
                 throw SettingsError.invalidBirthday
@@ -171,11 +175,13 @@ final class PreferencesStore: ObservableObject {
     }
 
     enum SettingsError: LocalizedError {
-        case invalidBirthday, recoveryRequired, recoveryBackupExists, recoveryBackupFailed
+        case invalidBirthday, invalidTargetAge, recoveryRequired, recoveryBackupExists, recoveryBackupFailed
         var errorDescription: String? {
             switch self {
             case .invalidBirthday:
                 return "Choose a valid birthday that is not in the future. A birth time must exist in the selected timezone."
+            case .invalidTargetAge:
+                return "Choose a target age from 1 to 150 years."
             case .recoveryRequired:
                 return "Your unreadable settings are protected. Use Replace unreadable settings before saving changes."
             case .recoveryBackupExists:

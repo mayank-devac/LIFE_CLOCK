@@ -34,7 +34,7 @@ struct SetupAndSettingsView: View {
     let onSaved: () -> Void
     @State private var birth = BirthDetails(year: 2000, month: 1, day: 1,
                                            timeZoneID: TimeZone.current.identifier)
-    @State private var layoutExpanded = true
+    @State private var layoutExpanded = false
     @State private var screenChoices = ScreenChoice.current()
     @State private var launchAtLogin = false
     @State private var needsLoginApproval = false
@@ -50,7 +50,10 @@ struct SetupAndSettingsView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var geocoder = CLGeocoder()
 
-    static let size = CGSize(width: 620, height: 800)
+    static var size: CGSize {
+        let availableHeight = (NSScreen.main?.visibleFrame.height ?? 1060) - 60
+        return CGSize(width: 620, height: min(1000, availableHeight))
+    }
 
     private var birthTimeBinding: Binding<Date> {
         // Use a stable clock-only reference so changing time never changes the selected DOB.
@@ -204,7 +207,7 @@ struct SetupAndSettingsView: View {
                             .buttonStyle(.borderedProminent)
                     }
                 }
-                Section("Birth timezone") {
+                Section {
                     LabeledContent("Selected", value: timezoneLabel(birth.calendar.timeZone))
                     HStack {
                         TextField("Search city or town", text: $cityQuery)
@@ -240,16 +243,37 @@ struct SetupAndSettingsView: View {
                     }
                     .disabled(cityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSearching)
                     .help("Sends the city query to Apple for a timezone lookup.")
-                    Button("Use Mac timezone · \(timezoneLabel(.current))") {
-                        cancelSearch()
-                        birth.timeZoneID = TimeZone.current.identifier
-                        cityQuery = ""
-                        saveBirthday(.edit)
+                } header: {
+                    HStack {
+                        Text("Birth timezone")
+                        Spacer()
+                        Button("Use Mac timezone") {
+                            cancelSearch()
+                            birth.timeZoneID = TimeZone.current.identifier
+                            cityQuery = ""
+                            saveBirthday(.edit)
+                        }
+                        .textCase(nil)
                     }
                 }
                 Section("Desktop card") {
                     Toggle("Show card", isOn: preferenceBinding(\.cardEnabled))
                     formatPicker("Display", selection: preferenceBinding(\.cardFormat))
+                    if store.preferences.cardFormat == .countdown {
+                        Stepper(value: preferenceBinding(\.targetAge), in: 1...150) {
+                            HStack {
+                                Text("Target age (personal estimate)")
+                                Spacer()
+                                TextField("", value: preferenceBinding(\.targetAge), format: .number.grouping(.never))
+                                    .labelsHidden()
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 32)
+                                    .accessibilityLabel("Target age in years")
+                                Text("Years")
+                            }
+                        }
+                        .help("Choose 1–150 years. This personal estimate is used by the display card countdown.")
+                    }
                     if store.preferences.cardFormat == .liveAge || store.preferences.cardFormat == .countdown {
                         if reduceMotion {
                             Text("Subsecond counters are hidden while Reduce Motion is on.")
@@ -285,10 +309,10 @@ struct SetupAndSettingsView: View {
                         Toggle("Frosted glass pane", isOn: preferenceBinding(\.wallpaperGlass))
                         if store.preferences.wallpaperGlass {
                             Toggle("Full-screen tint / veil", isOn: preferenceBinding(\.wallpaperGlassFullScreen))
-                            Slider(value: preferenceBinding(\.wallpaperGlassStrength), in: 0...1)
-                                .accessibilityLabel("Glass strength")
-                            Text("Glass strength · clear ↔ veiled").font(.caption2).foregroundStyle(.secondary)
                             if store.preferences.wallpaperGlassFullScreen {
+                                Slider(value: preferenceBinding(\.wallpaperGlassStrength), in: 0...1)
+                                    .accessibilityLabel("Glass strength")
+                                Text("Glass strength · clear ↔ veiled").font(.caption2).foregroundStyle(.secondary)
                                 Text("A tint / veil covers the whole screen behind the digits; the rounded frosted pane and its roundness slider apply only when this is off.")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -328,9 +352,11 @@ struct SetupAndSettingsView: View {
                                 Slider(value: preferenceBinding(\.wallpaperSize), in: 0.4...2)
                                     .accessibilityLabel("Clock size")
                                 Text("Size · 1.0 = full width").font(.caption2).foregroundStyle(.secondary)
-                                Slider(value: preferenceBinding(\.wallpaperRoundness), in: 0...2.6)
-                                    .accessibilityLabel("Pane roundness")
-                                Text("Roundness · 0 = sharp corners").font(.caption2).foregroundStyle(.secondary)
+                                if store.preferences.wallpaperGlass && !store.preferences.wallpaperGlassFullScreen {
+                                    Slider(value: preferenceBinding(\.wallpaperRoundness), in: 0...2.6)
+                                        .accessibilityLabel("Pane roundness")
+                                    Text("Roundness · 0 = sharp corners").font(.caption2).foregroundStyle(.secondary)
+                                }
                                 HStack {
                                     Button("Reset to centered full") {
                                         var updated = store.preferences
@@ -386,7 +412,8 @@ struct SetupAndSettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: Self.size.width, height: Self.size.height)
+        .frame(width: Self.size.width)
+        .frame(maxHeight: .infinity)
         .alert("Replace unreadable settings?", isPresented: $confirmRecovery) {
             Button("Cancel", role: .cancel) { }
             Button("Replace settings", role: .destructive, action: replaceUnreadableSettings)
@@ -501,7 +528,34 @@ struct SetupAndSettingsView: View {
             "new york": "America/New_York", "los angeles": "America/Los_Angeles",
             "london": "Europe/London", "paris": "Europe/Paris", "berlin": "Europe/Berlin",
             "tokyo": "Asia/Tokyo", "sydney": "Australia/Sydney", "dubai": "Asia/Dubai",
-            "singapore": "Asia/Singapore", "toronto": "America/Toronto"
+            "singapore": "Asia/Singapore", "toronto": "America/Toronto",
+            "india": "Asia/Kolkata", "new delhi": "Asia/Kolkata", "calcutta": "Asia/Kolkata",
+            "ahmedabad": "Asia/Kolkata", "jaipur": "Asia/Kolkata", "lucknow": "Asia/Kolkata",
+            "kochi": "Asia/Kolkata", "goa": "Asia/Kolkata", "chandigarh": "Asia/Kolkata",
+            "kathmandu": "Asia/Kathmandu", "dhaka": "Asia/Dhaka", "colombo": "Asia/Colombo",
+            "karachi": "Asia/Karachi", "lahore": "Asia/Karachi", "islamabad": "Asia/Karachi",
+            "beijing": "Asia/Shanghai", "shanghai": "Asia/Shanghai", "hong kong": "Asia/Hong_Kong",
+            "seoul": "Asia/Seoul", "osaka": "Asia/Tokyo", "taipei": "Asia/Taipei",
+            "bangkok": "Asia/Bangkok", "hanoi": "Asia/Ho_Chi_Minh", "ho chi minh city": "Asia/Ho_Chi_Minh",
+            "jakarta": "Asia/Jakarta", "bali": "Asia/Makassar", "manila": "Asia/Manila",
+            "kuala lumpur": "Asia/Kuala_Lumpur", "abu dhabi": "Asia/Dubai",
+            "riyadh": "Asia/Riyadh", "doha": "Asia/Qatar", "istanbul": "Europe/Istanbul",
+            "rome": "Europe/Rome", "madrid": "Europe/Madrid", "barcelona": "Europe/Madrid",
+            "amsterdam": "Europe/Amsterdam", "brussels": "Europe/Brussels", "zurich": "Europe/Zurich",
+            "vienna": "Europe/Vienna", "prague": "Europe/Prague", "stockholm": "Europe/Stockholm",
+            "dublin": "Europe/Dublin", "lisbon": "Europe/Lisbon", "athens": "Europe/Athens",
+            "boston": "America/New_York", "washington dc": "America/New_York", "miami": "America/New_York",
+            "atlanta": "America/New_York", "dallas": "America/Chicago", "houston": "America/Chicago",
+            "austin": "America/Chicago", "denver": "America/Denver", "phoenix": "America/Phoenix",
+            "las vegas": "America/Los_Angeles", "san diego": "America/Los_Angeles",
+            "vancouver": "America/Vancouver", "montreal": "America/Toronto", "ottawa": "America/Toronto",
+            "mexico city": "America/Mexico_City", "sao paulo": "America/Sao_Paulo",
+            "rio de janeiro": "America/Sao_Paulo", "buenos aires": "America/Argentina/Buenos_Aires",
+            "lima": "America/Lima", "bogota": "America/Bogota", "santiago": "America/Santiago",
+            "cairo": "Africa/Cairo", "lagos": "Africa/Lagos", "nairobi": "Africa/Nairobi",
+            "johannesburg": "Africa/Johannesburg", "cape town": "Africa/Johannesburg",
+            "melbourne": "Australia/Melbourne", "brisbane": "Australia/Brisbane",
+            "perth": "Australia/Perth", "adelaide": "Australia/Adelaide", "auckland": "Pacific/Auckland"
         ]
 
         if let id = aliases[q], let zone = TimeZone(identifier: id) {

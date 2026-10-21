@@ -31,7 +31,8 @@ struct AgeCardView: View {
             VStack(spacing: 4) {
                 if let birth = store.preferences.birth,
                    let age = AgeCalculator.snapshot(birth: birth, now: context.date),
-                   let reading = age.reading(for: format, birth: birth, now: context.date) {
+                   let reading = age.reading(for: format, birth: birth, now: context.date,
+                                             targetAge: store.preferences.targetAge) {
                     ageContent(age, reading: reading, date: context.date)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(accessibilityDescription(reading, birth: birth))
@@ -232,7 +233,8 @@ struct WallpaperAgeView: View {
                                             fullScreenGlass: Bool, now: Date) -> some View {
         if let birth = preferences.birth, birth.date != nil {
             if let snapshot = AgeCalculator.snapshot(birth: birth, now: now),
-               let reading = snapshot.reading(for: preferences.cardFormat, birth: birth, now: now) {
+               let reading = snapshot.reading(for: preferences.cardFormat, birth: birth, now: now,
+                                              targetAge: preferences.targetAge) {
                 ageContent(preferences: preferences, snapshot: snapshot, reading: reading,
                            metrics: metrics, now: now)
                     .modifier(WallpaperGlassModifier(enabled: preferences.wallpaperGlass && !fullScreenGlass,
