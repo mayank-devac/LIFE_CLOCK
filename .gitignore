@@ -2,3 +2,17 @@
 **/xcuserdata/
 .DS_Store
 plans
+
+# Local settings and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+
+# Local build products and editor state
+DerivedData/
+*.xcuserstate
+.agent/
