@@ -29,6 +29,7 @@ extension ScreenChoice {
 
 struct SetupAndSettingsView: View {
     @ObservedObject var store: PreferencesStore
+    @AppStorage("menuBarIconVisible") private var menuBarIconVisible = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onResetCardSize: () -> Void
     let onSaved: () -> Void
@@ -151,6 +152,10 @@ struct SetupAndSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Form {
+                Section {
+                    Toggle("Show menu bar icon", isOn: $menuBarIconVisible)
+                        .toggleStyle(.switch)
+                }
                 Section("Date of birth") {
                     HStack(alignment: .bottom, spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {

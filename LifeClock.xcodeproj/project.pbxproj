@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		000000000000000000000201 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000202 /* AppIcon.icns */; };
 		0926CCD0844C575CF25B65F2 /* AgeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24C1E1DE214C2606C26A0B41 /* AgeCardView.swift */; };
 		0E7833E53F53015CD0AF7157 /* AgeCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F327CC2005F1FCDA9BA56781 /* AgeCalculator.swift */; };
 		265BC4FD28C528304F1AC67C /* LifeClockWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4B45FC0D09D4A06468DAE804 /* LifeClockWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -51,6 +52,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		000000000000000000000202 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Resources/AppIcon.icns; sourceTree = "<group>"; };
 		24C1E1DE214C2606C26A0B41 /* AgeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgeCardView.swift; sourceTree = "<group>"; };
 		44C2981BE8B53C1C62970B8D /* LifeClock.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LifeClock.entitlements; sourceTree = "<group>"; };
 		4840516D9B04F33BE660721E /* LifeClockTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LifeClockTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -111,6 +113,7 @@
 		1C48CE29E4E135EE62951B22 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000202 /* AppIcon.icns */,
 				D4BAD369D27138CF965EDEDC /* LifeClockApp.swift */,
 				7182C7FEED112C4441FE49B2 /* SetupAndSettingsView.swift */,
 				24C1E1DE214C2606C26A0B41 /* AgeCardView.swift */,
@@ -261,6 +264,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				000000000000000000000201 /* AppIcon.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

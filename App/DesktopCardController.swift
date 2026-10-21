@@ -71,6 +71,14 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     }
 
     func apply(_ preferences: LifePreferences) {
+        // Hide before applying presentation changes: wallpaper layout requests a
+        // full-screen redraw, which is unnecessary when switching the card off.
+        guard preferences.cardEnabled && preferences.birth != nil else {
+            if activity.isRunning { activity.isRunning = false }
+            if panel.isVisible { panel.orderOut(nil) }
+            return
+        }
+
         let wallpaper = preferences.wallpaperMode
         let switchedModes = wallpaper != wallpaperActive
         if switchedModes {
@@ -113,8 +121,7 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
                 : [.canJoinAllSpaces, .stationary, .ignoresCycle]
             if switchedModes { keepOnScreen() }
         }
-        if preferences.cardEnabled && preferences.birth != nil { show() } else { panel.orderOut(nil) }
-        updateActivity()
+        show()
     }
 
     func show() {
@@ -171,7 +178,9 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
     }
 
     private func updateActivity() {
-        let running = awake && displayAwake && sessionActive && panel.isVisible && panel.occlusionState.contains(.visible)
+        let running = store.preferences.cardEnabled && store.preferences.birth != nil
+            && awake && displayAwake && sessionActive && panel.isVisible
+            && panel.occlusionState.contains(.visible)
         if activity.isRunning != running { activity.isRunning = running }
     }
 

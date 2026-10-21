@@ -20,6 +20,8 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleDisplayName</key>
 	<string>Life Clock</string>
 	<key>LSUIElement</key>

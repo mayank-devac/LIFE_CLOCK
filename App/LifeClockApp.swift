@@ -6,9 +6,10 @@ import WidgetKit
 @main
 struct LifeClockApp: App {
     @NSApplicationDelegateAdaptor(LifeClockDelegate.self) private var delegate
+    @AppStorage("menuBarIconVisible") private var menuBarIconVisible = true
 
     var body: some Scene {
-        MenuBarExtra("Life Clock", systemImage: "hourglass") {
+        MenuBarExtra("Life Clock", systemImage: "hourglass", isInserted: $menuBarIconVisible) {
             Button("Show Life Clock") { delegate.showCard() }
             Button("Settings…") { delegate.showSettings() }
                 .keyboardShortcut(",")
@@ -49,7 +50,12 @@ final class LifeClockDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if store.preferences.birth == nil { showSettings() } else { showCard() }
+        // Keep Settings reachable even when both the menu icon and card are hidden.
+        if UserDefaults.standard.object(forKey: "menuBarIconVisible") as? Bool == false || store.preferences.birth == nil {
+            showSettings()
+        } else {
+            showCard()
+        }
         return true
     }
 
