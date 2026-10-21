@@ -163,14 +163,18 @@ extension = app / 'Contents/PlugIns/LifeClockWidget.appex'
 data = json.loads((extension / 'Contents/Resources/Metadata.appintents/extract.actionsdata').read_bytes())
 intent = data['actions']['LifeClockConfiguration']
 names = {parameter['name'] for parameter in intent['parameters']}
-required = {'birthDay', 'birthMonth', 'birthYear', 'birthTime', 'timeZoneID', 'format'}
+required = {'birthDay', 'birthMonth', 'birthYear', 'birthTime', 'timeZoneID', 'mode', 'targetAge', 'showMonths',
+            'showTimerDays', 'showTimerHours', 'showTimerMinutes', 'showTimerSeconds'}
 if not required.issubset(names):
     raise SystemExit('Widget settings metadata is missing: ' + ', '.join(sorted(required - names)))
+mode = next(parameter for parameter in intent['parameters'] if parameter['name'] == 'mode')
+if not mode.get('isOptional') or 'primitive' not in mode['valueType'] or not mode.get('dynamicOptionsSupport'):
+    raise SystemExit('Clock must use the optional dynamic String dropdown, not an enum default.')
 for name in ('app', 'widget'):
     entitlements = plistlib.loads((logs / (name + '-entitlements.plist')).read_bytes())
     if entitlements.get('com.apple.security.application-groups'):
         raise SystemExit(name + ' unexpectedly requires an App Group')
-print('Birthday, time, timezone and format metadata present; no App Group required.')
+print('Birthday, mode, target age and unit metadata present; no App Group required.')
 PY
 
 printf 'Staging app and backing up the current installation…\n'

@@ -1,6 +1,93 @@
 import XCTest
+import SwiftUI
 
 final class AgeCalculatorTests: XCTestCase {
+    func testWidgetClockModeResolvesSavedDropdownAndLegacySelections() {
+        XCTAssertEqual(WidgetClockMode(selection: "Years remaining"), .remaining)
+        XCTAssertEqual(WidgetClockMode(selection: "remaining"), .remaining)
+        XCTAssertEqual(WidgetClockMode(selection: "Age"), .age)
+        XCTAssertEqual(WidgetClockMode(selection: "age"), .age)
+        XCTAssertEqual(WidgetClockMode(selection: nil), .age)
+        XCTAssertEqual(WidgetClockMode(selection: "unknown"), .age)
+    }
+
+    func testWidgetTimerDefaultsExcludeYearsAndIncludeDaysThroughSeconds() {
+        XCTAssertEqual(WidgetTimerUnit.defaultSelection, [.days, .hours, .minutes, .seconds])
+    }
+
+    func testWidgetTimerAccumulatesTimeIntoSelectedUnits() {
+        let hours = WidgetTimerUnit.durationStyle(for: [.hours, .minutes, .seconds])
+            .locale(Locale(identifier: "en_US"))
+        XCTAssertEqual(hours.format(.seconds(86_401)), "24h 0m 1s")
+        let seconds = WidgetTimerUnit.durationStyle(for: [.seconds])
+            .locale(Locale(identifier: "en_US"))
+        XCTAssertEqual(seconds.format(.seconds(61)), "61s")
+    }
+
+    func testWidgetTimerYearsUseCalendarYearsAcrossALeapYear() {
+        if #available(macOS 15.0, *) {
+            let birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
+            let fields = Set([WidgetTimerUnit.years, .days].map(\.calendarField))
+            let style = SystemFormatStyle.DateOffset(to: birth.date!, allowedFields: fields,
+                maxFieldCount: 2, sign: .never).calendar(birth.calendar)
+                .locale(Locale(identifier: "en_US"))
+            XCTAssertEqual(String(style.format(date("2001-01-01T00:00:00Z")).characters), "1 year")
+        }
+    }
+
+    func testWidgetDayTimerCarriesIntoDaysAndKeepsSecondsVisible() {
+        let style = WidgetTimerUnit.durationStyle(for: WidgetTimerUnit.defaultSelection)
+            .locale(Locale(identifier: "en_US"))
+        XCTAssertEqual(style.format(.seconds(86_399.9)), "0d 23h 59m 59s")
+        XCTAssertEqual(style.format(.seconds(86_400)), "1d 0h 0m 0s")
+        XCTAssertEqual(style.format(.seconds(86_401)), "1d 0h 0m 1s")
+    }
+
+    func testWidgetCalendarClockSupportsMonthsAndClampedCountdown() throws {
+        let birth = BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC")
+        let start = try XCTUnwrap(birth.date)
+        let style = Date.ComponentsFormatStyle(style: .abbreviated,
+            locale: Locale(identifier: "en_US"), calendar: birth.calendar,
+            fields: [.year, .month, .day])
+        let full = style.format(start..<date("2017-08-12T00:00:00Z"))
+        XCTAssertTrue(full.contains("17"), full)
+        XCTAssertTrue(full.contains("7"), full)
+        XCTAssertTrue(full.contains("11"), full)
+        for years in [60, 80, 90] {
+            let target = try XCTUnwrap(birth.calendar.date(byAdding: .year, value: years, to: start))
+            let after = target.addingTimeInterval(1)
+            let stopped = style.format(min(after, target)..<target)
+            XCTAssertTrue(stopped.contains("0"), stopped)
+            XCTAssertFalse(stopped.contains("-"), stopped)
+            let remaining = try XCTUnwrap(AgeCalculator.remaining(birth: birth, now: after, lifespanYears: years))
+            XCTAssertEqual(remaining.totalSeconds, 0)
+        }
+        let yearsOnly = Date.ComponentsFormatStyle(style: .abbreviated,
+            locale: Locale(identifier: "en_US"), calendar: birth.calendar, fields: [.year])
+        XCTAssertTrue(yearsOnly.format(start..<date("2017-08-12T00:00:00Z")).contains("17"))
+    }
+
+    func testRemainingWidgetClockSchedulesLiveSecondsTowardsTarget() throws {
+        if #available(macOS 15.0, *) {
+            let now = date("2026-10-21T12:45:57Z")
+            let target = date("2089-03-10T01:31:54Z")
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+            let style = SystemFormatStyle.DateOffset(to: target,
+                allowedFields: [.year, .month, .day, .hour, .minute, .second],
+                maxFieldCount: 6, sign: .never).calendar(calendar).locale(Locale(identifier: "en_US"))
+            let first = String(style.format(now).characters)
+            let second = String(style.format(now.addingTimeInterval(1)).characters)
+            XCTAssertNotEqual(first, second, "Countdown seconds must change without a timeline reload")
+            let nextUpdate = try XCTUnwrap(style.discreteInput(after: now))
+            XCTAssertGreaterThan(nextUpdate, now)
+            XCTAssertLessThanOrEqual(nextUpdate.timeIntervalSince(now), 1.001)
+            XCTAssertNotEqual(String(style.format(nextUpdate).characters), first)
+            let lastSecond = String(style.format(target.addingTimeInterval(-1)).characters)
+            XCTAssertTrue(lastSecond.contains("1"), lastSecond)
+        }
+    }
+
     private func date(_ value: String) -> Date {
         ISO8601DateFormatter().date(from: value)!
     }

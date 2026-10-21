@@ -194,6 +194,10 @@ struct SetupAndSettingsView: View {
                         DatePicker("Time", selection: birthTimeBinding, displayedComponents: .hourAndMinute)
                             .environment(\.calendar, Calendar(identifier: .gregorian))
                             .environment(\.timeZone, TimeZone.current)
+                    } else {
+                        Text("Time is approximate")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     if store.preferences.birth == nil && !store.recoveryNeeded {
                         Button("Set birthday") { saveBirthday(.confirm) }

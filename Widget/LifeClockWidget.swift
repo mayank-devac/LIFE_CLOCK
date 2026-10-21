@@ -2,11 +2,9 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-extension AgeFormat: AppEnum {
-    static var typeDisplayRepresentation: TypeDisplayRepresentation { "Age format" }
-    static var caseDisplayRepresentations: [AgeFormat: DisplayRepresentation] {
-        [.detailed: "Detailed age", .decimalYears: "Decimal years", .totalSeconds: "Total seconds"]
-    }
+struct WidgetClockModeOptions: DynamicOptionsProvider {
+    func results() async throws -> [String] { WidgetClockMode.allCases.map(\.title) }
+    func defaultResult() async -> String? { WidgetClockMode.age.title }
 }
 
 struct BirthTimeZoneOptions: DynamicOptionsProvider {
@@ -56,19 +54,85 @@ struct LifeClockConfiguration: WidgetConfigurationIntent {
     @Parameter(title: "Birth timezone", optionsProvider: BirthTimeZoneOptions())
     var timeZoneID: String
 
-    @Parameter(title: "Age format", default: .detailed)
-    var format: AgeFormat
+    @Parameter(title: "Clock", optionsProvider: WidgetClockModeOptions())
+    var mode: String?
+
+    var selectedMode: WidgetClockMode { WidgetClockMode(selection: mode) }
+
+    @Parameter(title: "Target age (personal estimate)", default: 80, inclusiveRange: (1, 150))
+    var targetAge: Int
+
+    @Parameter(title: "Months", default: true)
+    var showMonths: Bool
+
+    @Parameter(title: "Days", default: true)
+    var showTimerDays: Bool
+
+    @Parameter(title: "Hours", default: false)
+    var showTimerHours: Bool
+
+    @Parameter(title: "Minutes", default: false)
+    var showTimerMinutes: Bool
+
+    @Parameter(title: "Seconds", default: false)
+    var showTimerSeconds: Bool
+
+    var selectedFields: Set<Date.ComponentsFormatStyle.Field> {
+        var fields: Set<Date.ComponentsFormatStyle.Field> = [.year]
+        if showMonths { fields.insert(.month) }
+        if showTimerDays { fields.insert(.day) }
+        if showTimerHours { fields.insert(.hour) }
+        if showTimerMinutes { fields.insert(.minute) }
+        if showTimerSeconds { fields.insert(.second) }
+        return fields
+    }
+
+    static var parameterSummary: some ParameterSummary {
+        When(\.$mode, .equalTo, "Years remaining") {
+            Summary {
+                \.$birthDay
+                \.$birthMonth
+                \.$birthYear
+                \.$birthTime
+                \.$timeZoneID
+                \.$mode
+                \.$targetAge
+                \.$showMonths
+                \.$showTimerDays
+                \.$showTimerHours
+                \.$showTimerMinutes
+                \.$showTimerSeconds
+            }
+        } otherwise: {
+            Summary {
+                \.$birthDay
+                \.$birthMonth
+                \.$birthYear
+                \.$birthTime
+                \.$timeZoneID
+                \.$mode
+                \.$showMonths
+                \.$showTimerDays
+                \.$showTimerHours
+                \.$showTimerMinutes
+                \.$showTimerSeconds
+            }
+        }
+    }
 }
 
 struct LifeClockEntry: TimelineEntry {
     let date: Date
     let birth: BirthDetails?
-    var format: AgeFormat = .detailed
+    var mode: WidgetClockMode = .age
+    var targetAge: Int = 80
+    var fields: Set<Date.ComponentsFormatStyle.Field> = [.year, .month, .day]
     var isPreview = false
-    var setupMessage = "Right-click this widget → Edit Widget to set your birthday."
+    var setupMessage: String?
 }
 
 struct LifeClockProvider: AppIntentTimelineProvider {
+
     func placeholder(in context: Context) -> LifeClockEntry {
         LifeClockEntry(date: Date(), birth:
             BirthDetails(year: 2000, month: 1, day: 1, timeZoneID: "UTC"), isPreview: true)
@@ -87,6 +151,14 @@ struct LifeClockProvider: AppIntentTimelineProvider {
             entries.append(makeEntry(for: configuration,
                 date: Date(timeIntervalSinceReferenceDate: minute + Double(offset * 60))))
         }
+        // Include the stop instant so the offset clock is replaced by zero at the target.
+        if let first = entries.first, first.mode == .remaining,
+           let birth = first.birth, let birthDate = birth.date,
+           let target = birth.calendar.date(byAdding: .year, value: first.targetAge, to: birthDate),
+           target > now, let last = entries.last, target <= last.date {
+            entries.append(makeEntry(for: configuration, date: target))
+            entries.sort { $0.date < $1.date }
+        }
         return Timeline(entries: entries, policy: .atEnd)
     }
 
@@ -101,7 +173,9 @@ struct LifeClockProvider: AppIntentTimelineProvider {
             return LifeClockEntry(date: date, birth: nil,
                 setupMessage: "Edit Widget: choose a valid past birthday, birth time and timezone.")
         }
-        return LifeClockEntry(date: date, birth: birth, format: configuration.format)
+        return LifeClockEntry(date: date, birth: birth, mode: configuration.selectedMode,
+                              targetAge: min(150, max(1, configuration.targetAge)),
+                              fields: configuration.selectedFields)
     }
 }
 
@@ -110,72 +184,84 @@ struct LifeClockWidgetView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        VStack(alignment: .leading, spacing: family == .systemSmall ? 6 : 8) {
-            if let birth = entry.birth,
-               let age = AgeCalculator.snapshot(birth: birth, now: entry.date) {
-                Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 2) {
-                    ageContent(age)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(age.years) years, \(age.months) months, \(age.days) days old" + (birth.hasBirthTime ? "" : ", approximate") + (entry.isPreview ? ", preview" : ", as of \(entry.date.formatted(date: .omitted, time: .shortened))"))
-                Text(entry.isPreview ? "Preview" : "As of \(entry.date.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .accessibilityHidden(true)
-                if !birth.hasBirthTime {
-                    Text("Approximate")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .accessibilityHidden(true)
-                }
-                if let birthDate = birth.date {
-                    Text(birthDate, style: .timer)
-                        .font(.system(size: family == .systemSmall ? 19 : 24,
-                                      weight: .medium, design: .monospaced))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .help("Live time since birth")
-                        .accessibilityLabel(Text("Time since birth: ") + Text(birthDate, style: .timer))
-                }
-                Spacer(minLength: 0)
-            } else {
-                Spacer(minLength: 0)
-                Text(entry.setupMessage)
-                    .font(.caption)
+        VStack(alignment: .leading, spacing: 8) {
+            if let birth = entry.birth, let birthDate = birth.date,
+               let target = birth.calendar.date(byAdding: .year, value: entry.targetAge, to: birthDate) {
+                Text(entry.mode == .age ? "Your age" : "Years remaining")
+                    .font(.subheadline.weight(.medium))
+                clockText(birth: birth, birthDate: birthDate, target: target)
+                    .font(.system(size: family == .systemSmall ? 22 : 28,
+                                  weight: .semibold, design: .rounded))
+                    .monospacedDigit()
                     .multilineTextAlignment(.leading)
-                    .lineLimit(family == .systemSmall ? 5 : 7)
+                    .lineLimit(family == .systemSmall ? 4 : 3)
                     .minimumScaleFactor(0.8)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(1)
-                    .accessibilityLabel(entry.setupMessage)
-                Spacer(minLength: 0)
+                    .accessibilityLabel(Text(accessibilityPrefix(birth)) + clockText(birth: birth, birthDate: birthDate, target: target))
+            } else {
+                Text("Set your birthday").font(.headline)
+                if let message = entry.setupMessage {
+                    Text(message)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    setupDiagram
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .containerBackground(.background, for: .widget)
     }
 
-    @ViewBuilder private func ageContent(_ age: AgeSnapshot) -> some View {
-        switch entry.format {
-        case .detailed:
-            Text(String(format: "%02d · %02d · %02d", age.years, age.months, age.days))
-                .font(.system(size: family == .systemSmall ? 26 : 30, weight: .medium, design: .rounded))
-                .monospacedDigit()
-                .minimumScaleFactor(0.5).lineLimit(1)
-        case .decimalYears:
-            Text(age.decimalYears.formattedDecimalYears(fractionDigits: 6))
-                .font(.system(size: 28, weight: .medium, design: .rounded)).monospacedDigit()
-                .lineLimit(1).minimumScaleFactor(0.5)
-        case .totalSeconds:
-            Text(age.totalSeconds.rounded(.down).formatted(.number.precision(.fractionLength(0))))
-                .font(.system(size: 28, weight: .medium, design: .rounded)).monospacedDigit()
-                .lineLimit(1).minimumScaleFactor(0.5)
+    private var setupDiagram: some View {
+        let small = family == .systemSmall
+        let layout = small
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 3))
+            : AnyLayout(HStackLayout(spacing: 5))
+        let steps = ["Add widget", "Set birthday", "Choose clock"]
+        return layout {
+            ForEach(steps.indices, id: \.self) { index in
+                if index > 0 {
+                    Image(systemName: small ? "arrow.down" : "arrow.right")
+                        .font(.system(size: 9))
+                        .accessibilityHidden(true)
+                }
+                Text(steps[index])
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(.secondary, lineWidth: 1))
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Add widget, then set birthday, then choose clock")
+        .accessibilityHint("Right-click this widget and choose Edit Widget to begin.")
+        .help("Right-click this widget and choose Edit Widget to begin.")
+    }
+
+    private func clockText(birth: BirthDetails, birthDate: Date, target: Date) -> Text {
+        let style = Date.ComponentsFormatStyle(style: .abbreviated,
+                                              calendar: birth.calendar, fields: entry.fields)
+        if #available(macOS 15.0, *) {
+            if entry.mode == .remaining {
+                guard entry.date < target else { return Text(style.format(target..<target)) }
+                // DateOffset schedules against the moving current date, unlike the frozen
+                // lower-bound updates observed with dateRange(endingAt:) in the widget host.
+                return Text(.currentDate, format: .offset(to: target,
+                    allowedFields: entry.fields, maxFieldCount: entry.fields.count,
+                    sign: .never).calendar(birth.calendar))
+            }
+            return Text(.dateRange(startingAt: birthDate), format: style)
+        }
+        // macOS 14 cannot render live calendar components; retain the same units in timeline snapshots.
+        let range = entry.mode == .remaining
+            ? min(entry.date, target)..<target
+            : birthDate..<max(birthDate, entry.date)
+        return Text(style.format(range))
+    }
+
+    private func accessibilityPrefix(_ birth: BirthDetails) -> String {
+        let mode = entry.mode == .age ? "Age: " : "Time until target age \(entry.targetAge): "
+        return mode + (birth.hasBirthTime ? "" : "Approximate. ")
     }
 }
 

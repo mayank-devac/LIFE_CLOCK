@@ -68,6 +68,23 @@ struct BirthDetails: Codable, Equatable {
     }
 }
 
+// Widget configuration uses a String dropdown because macOS can return an enum's
+// default instead of its saved selection. Accept both new labels and legacy raw values.
+enum WidgetClockMode: String, CaseIterable {
+    case age, remaining
+
+    var title: String {
+        switch self {
+        case .age: return "Age"
+        case .remaining: return "Years remaining"
+        }
+    }
+
+    init(selection: String?) {
+        self = Self.allCases.first { $0.rawValue == selection || $0.title == selection } ?? .age
+    }
+}
+
 enum AgeFormat: String, Codable, CaseIterable, Identifiable {
     case detailed, decimalYears, totalSeconds
     var id: String { rawValue }
@@ -77,6 +94,38 @@ enum AgeFormat: String, Codable, CaseIterable, Identifiable {
         case .decimalYears: return "Decimal years"
         case .totalSeconds: return "Total seconds"
         }
+    }
+}
+
+enum WidgetTimerUnit: String, CaseIterable, Hashable {
+    case years, days, hours, minutes, seconds
+
+    static let defaultSelection: Set<Self> = [.days, .hours, .minutes, .seconds]
+
+    var calendarField: Date.ComponentsFormatStyle.Field {
+        switch self {
+        case .years: return .year
+        case .days: return .day
+        case .hours: return .hour
+        case .minutes: return .minute
+        case .seconds: return .second
+        }
+    }
+
+    private var durationUnit: Duration.UnitsFormatStyle.Unit? {
+        switch self {
+        case .years: return nil // Calendar years are not a fixed duration.
+        case .days: return .days
+        case .hours: return .hours
+        case .minutes: return .minutes
+        case .seconds: return .seconds
+        }
+    }
+
+    static func durationStyle(for units: Set<Self>) -> Duration.UnitsFormatStyle {
+        .units(allowed: Set(units.compactMap(\.durationUnit)), width: .narrow,
+               maximumUnitCount: units.count, zeroValueUnits: .show(length: 1),
+               fractionalPart: .hide(rounded: .down))
     }
 }
 

@@ -8,9 +8,13 @@ A native macOS 14+ menu-bar app, movable live desktop card and standard desktop 
 2. Select the **LifeClock** scheme and **My Mac**, then Run. The project uses **Sign to Run Locally** (ad-hoc signing), with no development team or App Group required. This is for local use on your Mac.
 3. Enter your birthday for the live desktop card and birthday celebration. Birth time is optional; **Use device timezone** selects your Mac's current timezone. Save.
 4. Right-click the desktop → **Edit Widgets** → **Life Clock** to add a small or medium widget.
-5. Right-click that widget → **Edit Widget**. Set its **Birthday**, optional **Birth time**, **Birth timezone** and **Age format**. Select **Asia/Kolkata** for IST. The device timezone is offered first and as the initial default.
+5. Right-click that widget → **Edit Widget**. Set its **Birthday**, optional **Birth time**, **Birth timezone** and **Clock**. Select **Asia/Kolkata** for IST. The device timezone is offered first and as the initial default.
 
-The standard widget stores its settings through macOS widget configuration, independently of the app. Enter the birthday separately in both places if you use both. Each widget can have a different birthday or format. Changing one widget does not change the desktop card or birthday celebration.
+The widget has one clock: **Age** counts from your birthday; **Years remaining** counts down to your chosen **Target age**, default 80 (allowed range 1–150). This is a personal target, not a prediction. Years are always enabled; Months, Days, Hours, Minutes and Seconds have individual switches. Turning a unit off lets larger or smaller selected units express that time. The countdown stops at zero. Apple's calendar formatter may omit zero-valued units. Live calendar updates require macOS 15 or later; macOS 14 shows the same selected units in system-scheduled timeline snapshots. Approximate birth-time information is available to VoiceOver. The old Age format and Show live timer settings are removed; existing birthday and day/hour/minute/second choices are preserved.
+
+After upgrading from the enum-based Clock setting, open **Edit Widget** and select **Years remaining** again, then set your target age. The Clock dropdown accepts the previous raw selections as well as its visible labels.
+
+The standard widget stores its settings through macOS widget configuration, independently of the app. Enter the birthday separately in both places if you use both. Each widget can have a different birthday, clock mode or unit selection. Changing one widget does not change the desktop card or birthday celebration.
 
 If upgrading from the old version, rebuild and replace the installed app, launch the new copy, then remove the old widget and add Life Clock again if **Edit Widget** does not expose the new settings. An unconfigured widget tells you to use **Edit Widget**. It no longer asks you to save your birthday in an app whose settings it cannot read.
 
@@ -78,8 +82,6 @@ Manual acceptance checks on the locally signed app:
 ## Limits and implementation notes
 
 - Milliseconds are a display unit, not a claim that the birth instant or wall clock is accurate to a millisecond. Nanosecond and picosecond modes are intentionally excluded. A 30 Hz screen update skips intermediate millisecond values.
-- Standard widgets include a live time-since-birth counter using Apple's system-rendered `Text(date, style: .timer)` in every age format and both sizes. The system controls its formatting and update cadence; it does not show milliseconds. This is total elapsed time since birth, not just the hours since your last birthday. See [Apple's dynamic date guidance](https://developer.apple.com/documentation/widgetkit/displaying-dynamic-dates).
-- The age figures above that timer still use precomputed minute snapshots with an **Age as of** label. Small detailed widgets show years/months/days; medium ones also show hours/minutes. Decimal years and total seconds are snapshots too. macOS can delay those updates; see [Apple's refresh guidance](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date).
 - The desktop card’s birthday is local UserDefaults data; macOS stores each widget’s birthday in its widget configuration. Neither is encrypted secret storage. Birthday data stays local; only an explicit online city search can send the typed city query to Apple for timezone lookup.
 - Lock/unlock handling uses workspace events, distributed screen-lock notifications and a Core Graphics session check. Some lock signals/session dictionary fields are not formally documented public contracts; real-device checks are required on future macOS versions. The fallback timer cannot guarantee a greeting at the exact instant of unlock.
 - Desktop placement and visibility are subject to macOS window management, Spaces, Show Desktop and Stage Manager. Verify those modes on your setup.
