@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreServices
 import SwiftUI
 import WidgetKit
 
@@ -29,6 +30,12 @@ final class LifeClockDelegate: NSObject, NSApplicationDelegate {
     private var preferencesSubscription: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Read the launch event before starting work that can process other events.
+        let launchSource = NSAppleEventManager.shared().currentAppleEvent?
+            .paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue
+        let backgroundLaunch = launchSource == keyAELaunchedAsLogInItem
+            || launchSource == keyAELaunchedAsServiceItem
+        let menuIconHidden = UserDefaults.standard.object(forKey: "menuBarIconVisible") as? Bool == false
         // Refresh cached entries after installing a newer configurable widget build.
         WidgetCenter.shared.reloadTimelines(ofKind: "LifeClockWidget")
         let card = DesktopCardController(store: store) { [weak self] in self?.showSettings() }
@@ -44,7 +51,9 @@ final class LifeClockDelegate: NSObject, NSApplicationDelegate {
         }
         card.apply(store.preferences)
         birthday.start()
-        if store.preferences.birth == nil || store.readWarning != nil { showSettings() }
+        if store.preferences.birth == nil || store.readWarning != nil || (menuIconHidden && !backgroundLaunch) {
+            showSettings()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
