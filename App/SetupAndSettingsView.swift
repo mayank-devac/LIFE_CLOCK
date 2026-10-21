@@ -10,19 +10,18 @@ struct TimezoneMatch: Identifiable {
 }
 
 struct ScreenChoice: Identifiable {
-    let id: Int          // CGDirectDisplayID; 0 means automatic
+    let id: Int          // CGDirectDisplayID; 0 follows the primary display
     let name: String
 }
 
 extension ScreenChoice {
     static func current() -> [ScreenChoice] {
-        var choices = [ScreenChoice(id: 0, name: "Automatic")]
+        var choices: [ScreenChoice] = []
         for (index, screen) in NSScreen.screens.enumerated() {
-            let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? Int ?? 0
-            let size = screen.frame.size
-            let area = "\(Int(size.width)) × \(Int(size.height))"
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? Int else { continue }
             let name = screen.localizedName.isEmpty ? "Display \(index + 1)" : screen.localizedName
-            choices.append(ScreenChoice(id: number, name: "\(name) · \(area)"))
+            choices.append(ScreenChoice(id: index == 0 ? 0 : number,
+                                        name: index == 0 ? "\(name) (Primary)" : name))
         }
         return choices
     }
@@ -30,11 +29,13 @@ extension ScreenChoice {
 
 struct SetupAndSettingsView: View {
     @ObservedObject var store: PreferencesStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onResetCardSize: () -> Void
     let onSaved: () -> Void
     @State private var birth = BirthDetails(year: 2000, month: 1, day: 1,
                                            timeZoneID: TimeZone.current.identifier)
     @State private var layoutExpanded = true
+    @State private var screenChoices = ScreenChoice.current()
     @State private var launchAtLogin = false
     @State private var needsLoginApproval = false
     @State private var birthdayError: String?
@@ -246,12 +247,18 @@ struct SetupAndSettingsView: View {
                     Toggle("Show card", isOn: preferenceBinding(\.cardEnabled))
                     formatPicker("Display", selection: preferenceBinding(\.cardFormat))
                     if store.preferences.cardFormat == .liveAge || store.preferences.cardFormat == .countdown {
-                        HStack(spacing: 10) {
-                            ForEach(SubsecondUnit.allCases) { unit in
-                                Toggle(unit.title, isOn: subsecondBinding(unit))
-                                    .toggleStyle(.checkbox)
-                                    .controlSize(.small)
-                                    .font(.caption2)
+                        if reduceMotion {
+                            Text("Subsecond counters are hidden while Reduce Motion is on.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            HStack(spacing: 10) {
+                                ForEach(SubsecondUnit.allCases) { unit in
+                                    Toggle(unit.title, isOn: subsecondBinding(unit))
+                                        .toggleStyle(.checkbox)
+                                        .controlSize(.small)
+                                        .font(.caption2)
+                                }
                             }
                         }
                     }
@@ -283,15 +290,15 @@ struct SetupAndSettingsView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        Picker("Screen", selection: preferenceBinding(\.wallpaperDisplay)) {
-                            ForEach(ScreenChoice.current()) { choice in
+                        Picker("Screen", selection: Binding(
+                            get: {
+                                let saved = store.preferences.wallpaperDisplay
+                                return screenChoices.contains(where: { $0.id == saved }) ? saved : 0
+                            },
+                            set: { preferenceBinding(\.wallpaperDisplay).wrappedValue = $0 })) {
+                            ForEach(screenChoices) { choice in
                                 Text(choice.name).tag(choice.id)
                             }
-                        }
-                        if store.preferences.wallpaperDisplay != 0 {
-                            Text("If that display disconnects, the card falls back to the current screen.")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                         }
                         HStack {
                             Text("Layout")
@@ -341,9 +348,6 @@ struct SetupAndSettingsView: View {
                             }
                             .padding(.vertical, 2)
                         }
-                        Text("Fills the screen behind the desktop icons: above the wallpaper, below every window and icon, clicks pass through. The card's drag, resize and gear controls do nothing here — use the menu-bar hourglass to reopen these settings.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
                     }
                     Toggle("Keep on top", isOn: preferenceBinding(\.alwaysOnTop))
                         .disabled(store.preferences.wallpaperMode)
@@ -385,7 +389,13 @@ struct SetupAndSettingsView: View {
         } message: {
             Text("This resets your desktop card settings and birthday. The unreadable settings are backed up first. Widget settings and Open at login are unchanged.")
         }
-        .onAppear(perform: load)
+        .onAppear {
+            screenChoices = ScreenChoice.current()
+            load()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            screenChoices = ScreenChoice.current()
+        }
         .onDisappear(perform: cancelSearch)
     }
 

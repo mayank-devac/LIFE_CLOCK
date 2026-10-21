@@ -204,10 +204,19 @@ rmdir "$stage_dir"
 /usr/bin/codesign --verify --deep --strict "$installed_app"
 
 printf 'Registering the installed widget and launching Life Clock…\n'
-/usr/bin/pluginkit -r "$built_app/$widget_suffix"
-/usr/bin/pluginkit -a "$installed_app/$widget_suffix"
-/usr/bin/pluginkit -m -A -D -v -i com.mayank.LifeClock.Widget > "$run_dir/widget-registration.txt"
-if ! /usr/bin/grep -F "$installed_app/$widget_suffix" "$run_dir/widget-registration.txt" > /dev/null; then
+# Registration can briefly lag behind replacing the bundle. Re-add the installed
+# path without first unregistering its built copy, which shares its identity.
+widget_registered=false
+for attempt in 1 2 3 4 5; do
+    /usr/bin/pluginkit -a "$installed_app/$widget_suffix"
+    /usr/bin/pluginkit -m -A -D -v -i com.mayank.LifeClock.Widget > "$run_dir/widget-registration.txt"
+    if /usr/bin/grep -F "$installed_app/$widget_suffix" "$run_dir/widget-registration.txt" > /dev/null; then
+        widget_registered=true
+        break
+    fi
+    if [ "$attempt" -lt 5 ]; then sleep 1; fi
+done
+if [ "$widget_registered" = false ]; then
     printf 'The installed widget was not registered.\n' >&2
     exit 1
 fi

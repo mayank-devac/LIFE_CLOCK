@@ -21,7 +21,7 @@ struct AgeCardView: View {
 
     var body: some View {
         let format = store.preferences.cardFormat
-        let subsecondUnits = store.preferences.subsecondUnits
+        let subsecondUnits: Set<SubsecondUnit> = reduceMotion ? [] : store.preferences.subsecondUnits
         let cardSize = Self.size(for: format, subsecondUnits: subsecondUnits)
         let liveCard = format == .liveAge || format == .countdown
         let refreshInterval = format.minimumTimelineInterval(subsecondUnits: subsecondUnits,
@@ -106,7 +106,7 @@ struct LiveAgeCardView: View {
             unit(reading.parts.hour, "HRS", numberSize: 33)
             unit(reading.parts.minute, "MIN", numberSize: 33)
             unit(reading.parts.second, "SEC", numberSize: 33)
-            ForEach(SubsecondUnit.allCases.filter { subsecondUnits.contains($0) }) { subsecondUnit in
+            ForEach(SubsecondUnit.allCases.filter { !reduceMotion && subsecondUnits.contains($0) }) { subsecondUnit in
                 SubsecondValueColumn(
                     value: subsecondUnit.formattedValue(of: reading.totalSeconds),
                     label: subsecondUnit.shortLabel,
@@ -197,12 +197,16 @@ struct WallpaperAgeView: View {
     @ObservedObject var activity: CardActivity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var visibleSubsecondUnits: Set<SubsecondUnit> {
+        reduceMotion ? [] : store.preferences.subsecondUnits
+    }
+
     var body: some View {
         // Same frame-rate rule as the card: subsecond digits get uncapped
         // timeline updates, plain seconds tick once per second.
         let format = store.preferences.cardFormat
         let refreshInterval = format.minimumTimelineInterval(
-            subsecondUnits: store.preferences.subsecondUnits,
+            subsecondUnits: visibleSubsecondUnits,
             reduceMotion: reduceMotion)
         // Read every preference OUTSIDE the timeline: a paused timeline caches
         // frames, so live slider changes must not depend on it re-ticking.
@@ -279,7 +283,7 @@ struct WallpaperAgeView: View {
             (text: String(format: "%02d", parts.minute ?? 0), label: "MINS", animated: true),
             (text: String(format: "%02d", parts.second ?? 0), label: "SECS", animated: true),
         ]
-        rows += store.preferences.subsecondUnits
+        rows += visibleSubsecondUnits
             .sorted { $0.groupIndex < $1.groupIndex }
             .map { unit -> (String, String, Bool) in
                 (unit.formattedValue(of: fractional), unit.shortLabel, false)
@@ -347,7 +351,7 @@ struct WallpaperAgeView: View {
         let growth = CGFloat(max(0.05, scale))
         let lineFactor: CGFloat
         if format == .liveAge || format == .countdown {
-            let columns = CGFloat(6 + store.preferences.subsecondUnits.count)
+            let columns = CGFloat(6 + visibleSubsecondUnits.count)
             let targetRow = size.width * 0.9 * growth
             let columnAdvance = 2.4 + 0.55
             let verticalBudget = (size.height - panePadding * 1.5) / 1.4

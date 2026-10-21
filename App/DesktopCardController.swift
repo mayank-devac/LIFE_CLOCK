@@ -151,8 +151,9 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
 
     // Wallpaper mode covers the whole screen frame — the full wallpaper area,
     // including what sits behind the menu bar and the Dock. The chosen display
-    // wins; when it is missing (unplugged, asleep), the card falls back to the
-    // current screen, then the main screen, then any screen.
+    // wins; the primary display is both the default and the fallback when the
+    // chosen display is disconnected. NSScreen.main follows the key window,
+    // whereas NSScreen.screens.first is the primary display.
     private func refreshWallpaperFrame() {
         guard let screen = wallpaperScreen() else { return }
         panel.setFrame(screen.frame, display: true)
@@ -166,7 +167,7 @@ final class DesktopCardController: NSObject, NSWindowDelegate {
            }) {
             return match
         }
-        return panel.screen ?? NSScreen.main ?? NSScreen.screens.first
+        return NSScreen.screens.first
     }
 
     private func updateActivity() {
